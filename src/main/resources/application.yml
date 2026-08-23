@@ -1,0 +1,21 @@
+micronaut:
+  application:
+    name: tasks
+  server:
+    port: 8080
+
+datasources:
+  default:
+    # Relative path: the file lands where the process is started from, so run from the repo root.
+    url: jdbc:sqlite:tasks.db
+    driver-class-name: org.sqlite.JDBC
+    dialect: ANSI
+    schema-generate: NONE
+    # SQLite takes a single writer. One connection removes SQLITE_BUSY entirely instead of
+    # relying on a busy-timeout to paper over contention.
+    maximum-pool-size: 1
+
+flyway:
+  datasources:
+    default:
+      enabled: true
