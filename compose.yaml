@@ -81,6 +81,14 @@ services:
       # Read-only, and a file in version control rather than baked into an image: editing it
       # needs `make nginx-reload`, not a rebuild.
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # The browser MCP client, served at /mcp/client. Same reasoning as nginx.conf above: a bind
+      # mount rather than a custom nginx image, so a UI change is a bundle rebuild and a refresh
+      # instead of a `docker build`, and this stays the digest-pinned official image.
+      #
+      # The mount point mirrors the URL, which is what lets the location use `root` instead of
+      # `alias` -- see nginx.conf. `make up` therefore depends on `build-client`: without it this
+      # directory does not exist and the page 404s.
+      - ./mcp-client/dist:/usr/share/nginx/html/mcp/client:ro
     healthcheck:
       # Probes nginx's own endpoint, never the backend — a stopped api must not make the proxy
       # look broken. curl is a real binary in this image (verified 2026-08-23, 8.21.0).

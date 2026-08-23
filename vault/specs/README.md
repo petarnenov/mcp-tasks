@@ -9,7 +9,7 @@ before implementing it; update it when scope changes.
 
 | Spec | Status | Summary |
 |---|---|---|
-| [mcp-client](mcp-client.md) | **draft** | A browser MCP client served at `:8080/mcp/client`, pinned to the 2026-07-28 revision. Tool list, generated forms, message log. No LLM. Not implemented. |
+| [mcp-client](mcp-client.md) | shipped | A browser MCP client served at `:8080/mcp/client`, negotiating 2026-07-28 with a loud downgrade. Tool list, generated forms, message log. No LLM. Verified 2026-08-23, 16 obligations. |
 | [mcp-server-typescript](mcp-server-typescript.md) | shipped | The MCP server rewritten in TypeScript on SDK 2.0.0, serving the **2026-07-28** protocol revision. Same five tools, same ports, same 3 replicas. Verified 2026-08-23, 20 obligations. |
 | [mcp-server](mcp-server.md) | superseded by [[mcp-server-typescript]] | The Java implementation. Its design still governs; only the language and SDK changed. Verified 2026-08-23, 22 of 23 obligations. |
 | [micronaut-5-migration](micronaut-5-migration.md) | shipped | Micronaut 4.10.17 → 5.1.1, Java 21 → 25, Gradle 8.14.5 → 9.7.1, `Dialect.ANSI` → `SQLITE`. Verified 2026-08-23, 14 obligations. |

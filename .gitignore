@@ -9,6 +9,11 @@ build/
 # Node — the mcp-server module. dist/ is compiled output, rebuilt by `make build`.
 node_modules/
 mcp-server/dist/
+mcp-client/dist/
+
+# Tooling scratch. The Playwright MCP server writes snapshots, console logs and screenshots
+# here whenever anyone drives a browser from this directory. Not ours, not deliverable.
+.playwright-mcp/
 
 # IDE
 .idea/

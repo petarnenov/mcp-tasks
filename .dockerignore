@@ -8,6 +8,7 @@ build/
 # of the context also keeps the context small enough for the build to stay fast.
 node_modules/
 mcp-server/dist/
+mcp-client/dist/
 
 # Application data — never goes into an image
 data/

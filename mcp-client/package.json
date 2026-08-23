@@ -1,0 +1,25 @@
+{
+  "name": "tasks-mcp-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A browser MCP client for the tasks server, on the 2026-07-28 protocol revision.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "bundle": "esbuild src/main.ts --bundle --format=esm --platform=browser --minify --sourcemap --outfile=dist/app.js",
+    "copy": "node scripts/copy-static.js",
+    "build": "npm run typecheck && npm run bundle && npm run copy",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  }
+}

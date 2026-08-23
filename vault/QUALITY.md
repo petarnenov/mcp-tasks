@@ -11,9 +11,9 @@ category genuinely does not exist here, it says so rather than inventing a comma
 generated list. The Gradle and Docker commands underneath are shown here so the mapping is visible,
 but prefer the make target — it is what the Makefile keeps correct.
 
-Everything runs from the repository root. **There are two toolchains:** `task-api` is Gradle/Java
-and `mcp-server` is npm/TypeScript. `make build` and `make test` run both; the `-api` and `-mcp`
-targets run one.
+Everything runs from the repository root. **There are three modules and two toolchains:**
+`task-api` is Gradle/Java; `mcp-server` and `mcp-client` are npm/TypeScript. `make build` and
+`make test` run all three; the `-api`, `-mcp` and `-client` targets run one.
 
 The Gradle wrapper is pinned to **Gradle 9.7.1** and the daemon to **Java 25**
 (`gradle/gradle-daemon-jvm.properties`). Do not use a system `gradle` — it may run on the wrong JVM,
@@ -26,17 +26,20 @@ newer** (`engines` in `package.json`); the container is pinned to Node 24 LTS.
 | Build | `make build` | `build-api` + `build-mcp` | Both services compiled and tested |
 | Build (api) | `make build-api` | `./gradlew build` | Compiles, runs annotation processors, runs the 23 api tests, assembles |
 | Build (mcp) | `make build-mcp` | `npm ci && npm run build && npm test` | Typechecks, compiles to `mcp-server/dist`, runs the 13 mcp tests |
+| Build (client) | `make build-client` | `npm ci && tsc && esbuild && npm test` | Typechecks, bundles to `mcp-client/dist`, runs the 26 client tests |
 | Install | `make install` | `npm --prefix mcp-server ci` | Installs exactly what `package-lock.json` pins |
-| Test (all) | `make test` | `test-api` + `test-mcp` | All **36** tests pass (23 api + 13 mcp) |
+| Test (all) | `make test` | `test-api` + `test-mcp` + `test-client` | All **62** tests pass (23 api + 13 mcp + 26 client) |
 | Test (api) | `make test-api` | `./gradlew test` | The 23 JUnit tests |
 | Test (mcp) | `make test-mcp` | `npm --prefix mcp-server test` | The 13 vitest tests |
+| Test (client) | `make test-client` | `npm --prefix mcp-client test` | The 26 vitest tests |
 | Test (one) | `make test-one TEST='*TimestampsTest*'` | `./gradlew test --tests …` | One **api** class or method. There is no mcp equivalent; use `npx vitest -t '…'` |
 | Run (host) | `make run` | `./gradlew :task-api:run` | Task API on `:8080`, database at `data/tasks.db` |
 | Run MCP (host) | `make run-mcp` | `npm --prefix mcp-server run dev` | Compiles, then MCP server on `:8877`; needs `make run` in another shell |
 | Inspector | `make run-mcp-inspector` | `npx -y @modelcontextprotocol/inspector@2.3.0` | Opens the MCP Inspector web UI. **Not a gate** — it runs the tool, not the server, and needs the server already up |
+| Client | `make run-client` | opens `:8080/mcp/client` | Our own browser MCP client. **Not a gate.** Needs `make up`; unlike the Inspector it needs no protocol setting |
 | Clean | `make clean` | `./gradlew clean && rm -rf mcp-server/dist` | Discards build output. Leaves the database and `node_modules` alone |
 | Image | `make docker-build` | two `docker build` calls | Builds `tasks` (Java 25) and `tasks-mcp` (Node 24) |
-| Run (Docker) | `make up` | `docker compose up --build -d --scale mcp=3` | nginx on `:8080` and `:8877`; api + 3 MCP replicas, all healthy |
+| Run (Docker) | `make up` | `build-client`, then `docker compose up --build -d --scale mcp=3` | nginx on `:8080` and `:8877`; api + 3 MCP replicas, all healthy, client page mounted |
 | Scale | `make scale REPLICAS=n` | `docker compose up -d --scale mcp=n` | Changes the MCP replica count. The api cannot be scaled |
 | Logs (mcp) | `make logs-mcp` | `docker compose logs -f mcp` | All MCP replicas |
 | Stop | `make down` | `docker compose down` | Stops both. `./data` survives |
@@ -63,7 +66,9 @@ Inspector's default, not this server's ceiling; see [[mcp-server-typescript]] ob
 definitions at that point — a compile failure *is* the typecheck failure, including Micronaut Data
 errors about entity mapping, which surface at compile time rather than at first query. For
 `mcp-server`, `npm run build` is `tsc`, so compiling and typechecking are the same command;
-`npm run typecheck` (`tsc --noEmit`) exists for a check without emitting.
+`npm run typecheck` (`tsc --noEmit`) exists for a check without emitting. For `mcp-client` they are
+**not** the same: esbuild strips types without checking them, so `npm run build` runs `tsc --noEmit`
+first and then bundles. Removing that step would let type errors ship.
 
 **In Docker, `:8080` is nginx, not the application.** The api container publishes no host port —
 it is reachable only through the proxy. `make run` (no Docker) still binds the app directly, so
@@ -100,9 +105,13 @@ src/test/java/dev/petrov/tasks/
 mcp-server/test/
   mcp-server.test.ts        mcp-server-typescript obligations 1-12, over real HTTP
   stub-tasks-api.ts         a stand-in task API on its own HTTP server
+
+mcp-client/test/
+  schema-form.test.ts       mcp-client obligations 5-7, against the server's real schemas
+  log.test.ts               mcp-client obligations 9-11
 ```
 
-**36 tests total** — 23 for the api (JUnit), 13 for the MCP server (vitest).
+**62 tests total** — 23 for the api (JUnit), 13 for the MCP server and 26 for the client (vitest).
 
 **Naming.** Each test in `TaskControllerTest` carries a `@DisplayName` starting with the number of
 the correctness obligation it proves in [`specs/task-api.md`](specs/task-api.md), and each test in
@@ -217,3 +226,15 @@ The most useful part of this file. Current, honest state:
     `mcp-server` from drifting on the wire: the duplicated types in `tasks-client.ts` are checked
     against the stub, not against the real api. A response-shape change in the api would pass both
     suites and fail only under `make up`.
+17. **No browser test runner.** `mcp-client`'s DOM layer — `main.ts`, roughly a third of the
+    module — has **no automated coverage at all**. Obligations 1-4 and 10-16 of [[mcp-client]] were
+    driven by hand through a real browser on 2026-08-23 and will not be re-run by anything. The
+    logic worth testing was deliberately kept out of `main.ts` for this reason, but "deliberately
+    thin" is not "verified". Adding Playwright was considered and declined; it is the decision to
+    revisit first if the page grows.
+18. **`mcp-client/dist` is a bind mount, so a stale bundle is invisible.** `make up` depends on
+    `build-client`, which closes the common case, but editing `src/` and refreshing the browser
+    without rebuilding shows the old page with no warning anywhere.
+19. **The client's dependency tree is one npm bug away from an unbuildable image.** vitest's nested
+    esbuild and the direct one must stay on the same version, or `npm ci` fails with
+    `EBADPLATFORM` — see implementation note 4 in [[mcp-client]]. Nothing enforces the alignment.

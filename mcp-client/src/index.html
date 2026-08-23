@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>tasks — MCP client</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Inline, not a file. Without any icon the browser requests /favicon.ico, which matches
+         nginx's `location /` and is proxied to the TASK API -- a 404 in the console of a
+         debugging tool, and a request the api has no business receiving. -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%E2%9C%93%3C/text%3E%3C/svg%3E">
+    <!-- Bundled by esbuild; every dependency is inlined, so nothing is fetched from a CDN. -->
+    <script type="module" src="app.js"></script>
+</head>
+<body>
+    <header>
+        <h1>tasks <span class="muted">MCP client</span></h1>
+        <div id="status" class="status" data-state="connecting">
+            <span class="dot"></span><span id="status-text">connecting…</span>
+        </div>
+    </header>
+
+    <main>
+        <section class="panel" id="tools-panel">
+            <h2>Tools</h2>
+            <ul id="tool-list" class="tool-list"></ul>
+        </section>
+
+        <section class="panel" id="call-panel">
+            <h2 id="call-title">Select a tool</h2>
+            <p id="call-description" class="description"></p>
+            <form id="call-form" hidden>
+                <div id="fields"></div>
+                <button type="submit" id="call-button">Call</button>
+            </form>
+            <pre id="result" class="result" hidden></pre>
+        </section>
+
+        <section class="panel" id="log-panel">
+            <h2>Messages <button type="button" id="clear-log" class="link">clear</button></h2>
+            <ul id="log-list" class="log-list"></ul>
+        </section>
+    </main>
+</body>
+</html>

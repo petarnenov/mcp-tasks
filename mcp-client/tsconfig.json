@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    // Bundler resolution, not nodenext: esbuild is what resolves imports here, and this is the
+    // mode that matches its behaviour. mcp-server uses nodenext because it is a real Node process.
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "es2023",
+
+    // DOM, and deliberately no "types": ["node"]. This code runs in a browser; if a Node global
+    // ever creeps into src/ the typecheck should be what catches it, not the bundle at runtime.
+    "lib": ["es2023", "dom", "dom.iterable"],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+
+    // esbuild emits the bundle; tsc only ever typechecks here.
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

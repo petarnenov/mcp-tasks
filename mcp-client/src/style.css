@@ -1,0 +1,171 @@
+/*
+ * Plain CSS, no framework and no build step of its own -- copy-static.js just copies this file.
+ *
+ * Follows the viewer's theme rather than committing to dark: this page sits next to a terminal for
+ * some people and next to a browser full of light tabs for others.
+ */
+
+:root {
+    --bg: #ffffff;
+    --panel: #f6f7f9;
+    --border: #d8dce2;
+    --text: #1b1f24;
+    --muted: #656d76;
+    --accent: #0a5ad6;
+    --ok: #1a7f37;
+    --warn: #9a6700;
+    --error: #cf222e;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #14171c;
+        --panel: #1b1f26;
+        --border: #2c323b;
+        --text: #e6e9ee;
+        --muted: #9099a5;
+        --accent: #6ea8ff;
+        --ok: #4ac26b;
+        --warn: #d4a72c;
+        --error: #ff7b72;
+    }
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+}
+
+h1 { font-size: 1.05rem; margin: 0; font-weight: 600; }
+h2 { font-size: 0.8rem; margin: 0 0 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+/* The selected tool's name is an h2, but it is DATA, not a section label: MCP tool names are
+   case-sensitive and lowercase, and uppercasing them misreports what the server called it. */
+#call-title { text-transform: none; letter-spacing: 0; font-size: 0.95rem; font-family: var(--mono); color: var(--text); }
+.muted { color: var(--muted); font-weight: 400; }
+
+.status { display: flex; align-items: center; gap: 0.5rem; font-family: var(--mono); font-size: 0.8rem; }
+.status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.status[data-state="connected"] .dot { background: var(--ok); }
+.status[data-state="warning"] .dot { background: var(--warn); }
+.status[data-state="warning"] { color: var(--warn); }
+.status[data-state="error"] .dot { background: var(--error); }
+.status[data-state="error"] { color: var(--error); }
+
+main {
+    display: grid;
+    grid-template-columns: minmax(200px, 1fr) minmax(320px, 2fr);
+    grid-template-areas: "tools call" "log log";
+    gap: 1px;
+    background: var(--border);
+    min-height: calc(100vh - 53px);
+}
+
+@media (max-width: 800px) {
+    main { grid-template-columns: 1fr; grid-template-areas: "tools" "call" "log"; }
+}
+
+.panel { background: var(--bg); padding: 1rem 1.25rem; overflow-x: auto; }
+#tools-panel { grid-area: tools; }
+#call-panel  { grid-area: call; }
+#log-panel   { grid-area: log; }
+
+.tool-list, .log-list { list-style: none; margin: 0; padding: 0; }
+
+.tool-list button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.5rem 0.6rem;
+    margin-bottom: 2px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-family: var(--mono);
+    cursor: pointer;
+}
+.tool-list button:hover { background: var(--panel); }
+.tool-list button[aria-pressed="true"] { background: var(--panel); border-color: var(--border); color: var(--accent); }
+
+.description { color: var(--muted); margin: 0 0 1rem; max-width: 62ch; }
+
+label { display: block; margin-bottom: 0.9rem; }
+label .name { font-family: var(--mono); font-weight: 600; }
+label .req { color: var(--error); }
+label .hint { display: block; color: var(--muted); font-size: 0.85em; margin: 0.1rem 0 0.3rem; }
+
+input, select {
+    width: 100%;
+    max-width: 34rem;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+}
+input[aria-invalid="true"] { border-color: var(--error); }
+
+button[type="submit"] {
+    padding: 0.45rem 1.1rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+}
+button[type="submit"]:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button[type="submit"]:disabled { opacity: 0.5; cursor: default; }
+
+.link { background: none; border: none; color: var(--accent); font: inherit; font-size: 0.8rem; cursor: pointer; padding: 0; text-transform: none; letter-spacing: 0; }
+
+.result {
+    margin: 1rem 0 0;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--ok);
+    border-radius: 6px;
+    background: var(--panel);
+    font-family: var(--mono);
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.result[data-error="true"] { border-left-color: var(--error); }
+
+.log-list li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 0.82em;
+}
+.log-list li:last-child { border-bottom: none; }
+.log-list .method { flex: 1; }
+.log-list .state { min-width: 5.5rem; }
+.log-list .state[data-state="complete"]  { color: var(--ok); }
+.log-list .state[data-state="streaming"] { color: var(--warn); }
+.log-list .state[data-state="failed"]    { color: var(--error); }
+.log-list .state[data-state="pending"]   { color: var(--muted); }
+.log-list .took { color: var(--muted); min-width: 4rem; text-align: right; }
+.log-list .detail { color: var(--error); }
+
+.empty { color: var(--muted); font-style: italic; }

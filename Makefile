@@ -23,14 +23,15 @@ GRADLE  := ./gradlew
 # The MCP server is a Node/TypeScript project, not a Gradle module. `--prefix` keeps every recipe
 # runnable from the repository root without a cd that the next line would forget.
 NPM     := npm --prefix mcp-server
+NPM_CLIENT := npm --prefix mcp-client
 # Pinned so `make run-mcp-inspector` cannot silently change tool underneath you. Bump it
 # deliberately; `npx -y` would otherwise fetch whatever is newest that day.
 INSPECTOR ?= @modelcontextprotocol/inspector@2.3.0
 DB      := data/tasks.db
 
-.PHONY: help build build-api build-mcp test test-api test-mcp test-one run clean install \
-        run-mcp run-mcp-inspector docker-build up down restart scale logs logs-api logs-mcp \
-        logs-nginx ps shell nginx-reload db-shell db-reset
+.PHONY: help build build-api build-mcp build-client test test-api test-mcp test-client test-one \
+        run clean install install-client run-mcp run-mcp-inspector run-client docker-build up down \
+        restart scale logs logs-api logs-mcp logs-nginx ps shell nginx-reload db-shell db-reset
 
 # ---- Local -------------------------------------------------------------------
 
@@ -42,7 +43,7 @@ help:  ## Print this help
 	@echo ""
 	@echo "Overridable: IMAGE=$(IMAGE) MCP_IMAGE=$(MCP_IMAGE) TAG=$(TAG) PORT=$(PORT) MCP_PORT=$(MCP_PORT) REPLICAS=$(REPLICAS)"
 
-build: build-api build-mcp  ## Build and test both services
+build: build-api build-mcp build-client  ## Build and test everything
 
 build-api:  ## Compile, run the tests, and assemble the task API jar
 	$(GRADLE) build
@@ -51,16 +52,26 @@ build-mcp: install  ## Typecheck, test and compile the MCP server to mcp-server/
 	$(NPM) run build
 	$(NPM) test
 
+build-client: install-client  ## Typecheck, test and bundle the browser MCP client
+	$(NPM_CLIENT) run build
+	$(NPM_CLIENT) test
+
 install:  ## Install the MCP server's dependencies from the lockfile
 	$(NPM) ci
 
-test: test-api test-mcp  ## Run both test suites
+install-client:  ## Install the MCP client's dependencies from the lockfile
+	$(NPM_CLIENT) ci
+
+test: test-api test-mcp test-client  ## Run every test suite
 
 test-api:  ## Run the task API tests (JUnit)
 	$(GRADLE) test
 
 test-mcp: install  ## Run the MCP server tests (vitest)
 	$(NPM) test
+
+test-client: install-client  ## Run the MCP client tests (vitest)
+	$(NPM_CLIENT) test
 
 test-one:  ## Run one API test class or method: make test-one TEST='*TimestampsTest*'
 	@test -n "$(TEST)" || { echo "usage: make test-one TEST='*TimestampsTest*'"; exit 1; }
@@ -88,9 +99,18 @@ run-mcp-inspector:  ## Open the MCP Inspector against the running MCP server
 	@echo "In the Inspector, set Protocol Era to Modern or Auto to negotiate 2026-07-28."
 	npx -y $(INSPECTOR)
 
+# Serves from the nginx bind mount, so `make up` must be running. Unlike the Inspector this needs
+# no Protocol Era setting: the client is pinned to 2026-07-28 in code.
+run-client:  ## Open the browser MCP client (needs `make up`)
+	@echo "Opening http://localhost:$(PORT)/mcp/client"
+	@open "http://localhost:$(PORT)/mcp/client" 2>/dev/null \
+	  || echo "Could not open a browser; go to http://localhost:$(PORT)/mcp/client"
+
+
+
 clean:  ## Remove build output. Does NOT touch the database or node_modules
 	$(GRADLE) clean
-	rm -rf mcp-server/dist
+	rm -rf mcp-server/dist mcp-client/dist
 
 # ---- Docker ------------------------------------------------------------------
 
@@ -98,10 +118,14 @@ docker-build:  ## Build both container images
 	docker build -f task-api/Dockerfile -t $(IMAGE):$(TAG) .
 	docker build -f mcp-server/Dockerfile -t $(MCP_IMAGE):$(TAG) .
 
-up:  ## Start everything in Docker, building if needed
+# Depends on build-client because the page is a BIND MOUNT, not a layer in the nginx image:
+# without mcp-client/dist the mount point is missing and /mcp/client 404s on a stack that
+# otherwise looks healthy.
+up: build-client  ## Start everything in Docker, building if needed
 	$(COMPOSE) up --build -d --scale mcp=$(REPLICAS)
-	@echo "-> REST: http://localhost:$(PORT)/tasks"
-	@echo "-> MCP:  http://localhost:$(MCP_PORT)/mcp   (also http://localhost:$(PORT)/mcp)"
+	@echo "-> REST:   http://localhost:$(PORT)/tasks"
+	@echo "-> MCP:    http://localhost:$(MCP_PORT)/mcp   (also http://localhost:$(PORT)/mcp)"
+	@echo "-> Client: http://localhost:$(PORT)/mcp/client"
 	@echo "   $(REPLICAS) MCP replica(s). make ps for health, make scale REPLICAS=n to change."
 
 down:  ## Stop the service. Data in ./data survives

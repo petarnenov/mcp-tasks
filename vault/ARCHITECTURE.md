@@ -5,9 +5,11 @@ checked against the working tree.
 
 ## What this system is
 
-Two services, in **two languages**. A single-user task list with an HTTP interface, written in
-Java on Micronaut 5, and an MCP server that exposes it as tools so a model can use it from a
-conversation, written in TypeScript on Node.
+Two services and a page, in **two languages**. A single-user task list with an HTTP interface,
+written in Java on Micronaut 5; an MCP server that exposes it as tools so a model can use it from a
+conversation, written in TypeScript on Node; and a browser MCP client at `:8080/mcp/client` for
+looking at those tools by hand, also TypeScript. The client is static files — no process, no
+container.
 
 The split is not a preference. The MCP Java SDK tops out at the **2025-11-25** protocol revision
 and the current one is **2026-07-28**; TypeScript is where that revision exists. The full
@@ -48,10 +50,12 @@ Model Context Protocol. Do not infer scope from it.
 | MCP entry point | `mcp-server/src/index.ts` | Environment, `listen`, SIGTERM. Nothing else |
 | Task API client | `mcp-server/src/tasks-client.ts` | `fetch` over the api, plus the duplicated wire types. Returns a result union, never throws |
 | MCP container | `mcp-server/Dockerfile` | `node:24-alpine`, digest-pinned, multi-stage, non-root |
+| Client page | `mcp-client/src/main.ts` | DOM wiring. The only file in that module allowed to touch `document` |
+| Client logic | `mcp-client/src/{connection,schema-form,log}.ts` | Negotiation and era reporting, JSON Schema to form model, the message log. No DOM, so all three are unit-tested |
 | Entry point | `Makefile` | The documented way to run anything here. `make` lists the targets |
 
-Roughly 940 lines of Java (`task-api`) and 830 lines of TypeScript (`mcp-server`), both including
-tests.
+Roughly 940 lines of Java (`task-api`) and 1,840 lines of TypeScript (`mcp-server` plus
+`mcp-client`), all including tests.
 
 ## Flow
 
@@ -278,6 +282,24 @@ HTTP request from the command line, and a Node runtime can.
 **`ENTRYPOINT ["node", "dist/index.js"]`, never `npm start`.** npm as PID 1 does not forward
 SIGTERM, so `make down` and every scale-down would wait out the kill timeout. `index.ts` installs
 its own SIGTERM/SIGINT handler for the same reason.
+
+**The browser client is static files behind the existing nginx, not a service.** It is served at
+`/mcp/client`, which makes the MCP endpoint at `/mcp` **same-origin** — no CORS, no preflight, and
+no relay backend. A client on its own port would have forced CORS headers onto the MCP server. The
+`^~ /mcp/client` location wins over `/mcp` by longest prefix; that was measured, not assumed. See
+[[mcp-client]].
+
+**The client negotiates `'auto'` and shouts about a downgrade.** It prefers 2026-07-28 but connects
+to a 2025-era server too, and renders anything below modern in a warning state naming the revision
+it did not get. Pinning was the original design and was changed on 2026-08-23: a pinned client
+cannot talk to an older server at all, and — measured — does not even fail fast, sitting through a
+60-second probe timeout. The requirement is met by *preferring* the newest revision and making a
+downgrade impossible to miss, which is the exact failure the MCP Inspector's default demonstrated.
+
+**`absolute_redirect off` on the client location** (`nginx/nginx.conf`). nginx's directory redirect
+for `/mcp/client` built its `Location` from its own listen port, so `PORT=9000 make up` sent the
+browser to `:8080` where nothing listens. Relative redirects resolve against the origin the browser
+is already on. Do not remove this thinking it is cosmetic.
 
 **No `Host` or `Origin` guard on the MCP endpoint.** The SDK ships `localhostHostValidation()` and
 `localhostOriginValidation()` for servers bound to loopback on a developer's machine. nginx rewrites
