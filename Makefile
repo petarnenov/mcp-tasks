@@ -10,15 +10,20 @@ SHELL := /bin/bash -o pipefail -e
 
 .DEFAULT_GOAL := help
 
-IMAGE   ?= tasks
+IMAGE     ?= tasks
+MCP_IMAGE ?= tasks-mcp
 TAG     ?= latest
-PORT    ?= 8080
+PORT     ?= 8080
+MCP_PORT ?= 8877
+# Three by default: with one replica a broken balancer or an accidentally stateful server
+# looks exactly like a working one. The default path should be the one that gets tested.
+REPLICAS ?= 3
 COMPOSE ?= docker compose
 GRADLE  := ./gradlew
 DB      := data/tasks.db
 
 .PHONY: help build test test-one run clean \
-        docker-build up down restart logs logs-api logs-nginx ps shell \
+        run-mcp docker-build up down restart scale logs logs-api logs-mcp logs-nginx ps shell \
         nginx-reload db-shell db-reset
 
 # ---- Local -------------------------------------------------------------------
@@ -29,7 +34,7 @@ help:  ## Print this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
 	  | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 	@echo ""
-	@echo "Overridable: IMAGE=$(IMAGE) TAG=$(TAG) PORT=$(PORT)"
+	@echo "Overridable: IMAGE=$(IMAGE) MCP_IMAGE=$(MCP_IMAGE) TAG=$(TAG) PORT=$(PORT) MCP_PORT=$(MCP_PORT) REPLICAS=$(REPLICAS)"
 
 build:  ## Compile, run the tests, and assemble the jar
 	$(GRADLE) build
@@ -41,20 +46,26 @@ test-one:  ## Run one test class or method: make test-one TEST='*TimestampsTest*
 	@test -n "$(TEST)" || { echo "usage: make test-one TEST='*TimestampsTest*'"; exit 1; }
 	$(GRADLE) test --tests '$(TEST)'
 
-run:  ## Run the service on the host, no Docker (http://localhost:8080)
-	$(GRADLE) run
+run:  ## Run the task API on the host, no Docker (http://localhost:8080)
+	$(GRADLE) :task-api:run
+
+run-mcp:  ## Run the MCP server on the host, no Docker (needs `make run` in another shell)
+	$(GRADLE) :mcp-server:run
 
 clean:  ## Remove build output. Does NOT touch the database
 	$(GRADLE) clean
 
 # ---- Docker ------------------------------------------------------------------
 
-docker-build:  ## Build the container image
-	docker build -t $(IMAGE):$(TAG) .
+docker-build:  ## Build both container images
+	docker build -f task-api/Dockerfile -t $(IMAGE):$(TAG) .
+	docker build -f mcp-server/Dockerfile -t $(MCP_IMAGE):$(TAG) .
 
-up:  ## Start the service in Docker, building if needed
-	$(COMPOSE) up --build -d
-	@echo "-> http://localhost:$(PORT)/tasks   (through nginx; make ps for health)"
+up:  ## Start everything in Docker, building if needed
+	$(COMPOSE) up --build -d --scale mcp=$(REPLICAS)
+	@echo "-> REST: http://localhost:$(PORT)/tasks"
+	@echo "-> MCP:  http://localhost:$(MCP_PORT)/mcp   (also http://localhost:$(PORT)/mcp)"
+	@echo "   $(REPLICAS) MCP replica(s). make ps for health, make scale REPLICAS=n to change."
 
 down:  ## Stop the service. Data in ./data survives
 	$(COMPOSE) down
@@ -66,6 +77,13 @@ logs:  ## Follow logs from all services
 
 logs-api:  ## Follow the application logs only
 	$(COMPOSE) logs -f api
+
+scale:  ## Set the MCP replica count: make scale REPLICAS=5
+	$(COMPOSE) up -d --no-recreate --scale mcp=$(REPLICAS)
+	@echo "mcp scaled to $(REPLICAS)"
+
+logs-mcp:  ## Follow the MCP server logs only
+	$(COMPOSE) logs -f mcp
 
 logs-nginx:  ## Follow the nginx access and error logs only
 	$(COMPOSE) logs -f nginx

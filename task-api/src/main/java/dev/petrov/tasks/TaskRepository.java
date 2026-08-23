@@ -8,10 +8,9 @@ import io.micronaut.data.repository.CrudRepository;
 /**
  * Micronaut Data generates the implementation at compile time.
  *
- * <p>Dialect is ANSI, not SQLITE: Micronaut Data has no SQLite dialect (the enum offers MYSQL,
- * POSTGRES, SQL_SERVER, ORACLE, H2 and ANSI). Plain ANSI SQL is what these CRUD operations need
- * and SQLite accepts it.
+ * <p>Dialect was ANSI until 2026-08-23, because Micronaut Data 4 had no SQLite dialect. Micronaut
+ * Data 5 added one, so this now says what it means.
  */
-@JdbcRepository(dialect = Dialect.ANSI)
+@JdbcRepository(dialect = Dialect.SQLITE)
 public interface TaskRepository extends CrudRepository<Task, String> {
 }

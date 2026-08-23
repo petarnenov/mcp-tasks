@@ -4,13 +4,13 @@
 # produces a different image next month, which defeats half the point of containerizing.
 # Security patches therefore need a deliberate edit — one that shows up in a diff.
 #
-#   eclipse-temurin:21-jdk  -> Temurin 21.0.12 LTS on Ubuntu 26.04  (resolved 2026-08-23)
-#   eclipse-temurin:21-jre  -> Temurin 21.0.12 LTS on Ubuntu 26.04  (resolved 2026-08-23)
+#   eclipse-temurin:25-jdk  -> Temurin 25 LTS on Ubuntu 26.04  (resolved 2026-08-23)
+#   eclipse-temurin:25-jre  -> Temurin 25.0.4 LTS on Ubuntu 26.04  (resolved 2026-08-23)
 #
-# Re-resolve with: docker buildx imagetools inspect eclipse-temurin:21-jre
+# Re-resolve with: docker buildx imagetools inspect eclipse-temurin:25-jre
 
 # ---------- build ----------
-FROM eclipse-temurin:21-jdk@sha256:85f00967bcc624fc19fa9c2cf124ea426a5363898e267141726f31f358c2e14b AS build
+FROM eclipse-temurin:25-jdk@sha256:e787e08ef76f4c16866108cd7f9fcd96a68eef3ac6cc76866897d4d02d5a2262 AS build
 
 WORKDIR /src
 
@@ -19,15 +19,25 @@ WORKDIR /src
 COPY gradlew ./
 COPY gradle ./gradle
 COPY settings.gradle.kts build.gradle.kts gradle.properties ./
-RUN ./gradlew --no-daemon dependencies --quiet > /dev/null
+COPY task-api/build.gradle.kts task-api/
+COPY mcp-server/build.gradle.kts mcp-server/
+RUN ./gradlew --no-daemon :task-api:dependencies --quiet > /dev/null
 
-COPY src ./src
+COPY task-api/src task-api/src
 # Tests are a gate (`make test`), not a packaging step. Running them here would double the
 # image build time and fail the build for reasons unrelated to packaging.
-RUN ./gradlew --no-daemon build -x test
+RUN ./gradlew --no-daemon :task-api:build -x test
 
 # ---------- runtime ----------
-FROM eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037 AS runtime
+FROM eclipse-temurin:25-jre@sha256:f9e65324a37f28209ce7dd0e5149a7aa954520ed936fb87813cf6ded2400a112 AS runtime
+
+# The Java 25 JRE image ships NO curl, wget or nc -- unlike the Java 21 one, which had curl and
+# wget. The compose healthcheck probes /health over HTTP, so without this the container never
+# reports healthy. A TCP-only probe was rejected: a JVM with an open socket and a broken
+# datasource would pass it, which is exactly what /health exists to catch.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
 
 # A fixed UID, so the bind-mount ownership behaviour is predictable rather than dependent on
 # whatever the base image's user table happens to contain.
@@ -43,9 +53,9 @@ WORKDIR /app
 #
 # Copied dependencies-first so that a source-only change rebuilds one small layer instead
 # of the 62-jar dependency layer.
-COPY --from=build /src/build/docker/main/layers/libs      /app/libs
-COPY --from=build /src/build/docker/main/layers/resources /app/resources
-COPY --from=build /src/build/docker/main/layers/app/application.jar /app/application.jar
+COPY --from=build /src/task-api/build/docker/main/layers/libs      /app/libs
+COPY --from=build /src/task-api/build/docker/main/layers/resources /app/resources
+COPY --from=build /src/task-api/build/docker/main/layers/app/application.jar /app/application.jar
 
 # The database lives on a mounted volume, never in the container's writable layer.
 ENV DATASOURCES_DEFAULT_URL=jdbc:sqlite:/data/tasks.db

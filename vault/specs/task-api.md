@@ -4,6 +4,10 @@
 **Owner:** petarnenovpetrov@gmail.com
 **Updated:** 2026-08-23
 
+> **Superseded in part.** The stack described here was migrated on 2026-08-23 — see
+> [[micronaut-5-migration]]. The API contract and all 19 obligations are unchanged; the versions
+> and the SQL dialect are not. Rows below carry the correction inline.
+>
 > **Shipped 2026-08-23.** Implemented as specified; all 19 correctness obligations have a passing
 > test. Paths below are real. Three things the implementation forced that the plan did not
 > anticipate are recorded in [Implementation notes](#implementation-notes) — the spec text above
@@ -55,19 +59,23 @@ Also in scope:
 
 | Choice | Value | Note |
 |---|---|---|
-| Language | Java 21 (LTS) | Confirmed 2026-08-23. Constrains the framework major — see below |
-| Framework | Micronaut **4.10.17** | Pinned 2026-08-23. Latest 4.x. See the version note below |
-| Build | Gradle, Kotlin DSL (`build.gradle.kts`) | Confirmed 2026-08-23 |
+| Language | ~~Java 21~~ → **Java 25** | Migrated 2026-08-23. Forced by Micronaut 5's JDK 25 baseline |
+| Framework | ~~Micronaut 4.10.17~~ → **5.1.1** | Migrated 2026-08-23. The note below is now history |
+| Build | Gradle **9.7.1**, Kotlin DSL | Wrapper and daemon JVM both bumped 2026-08-23 |
 | Persistence | Micronaut Data JDBC | Compile-time repositories; no runtime reflection/proxies |
 | Driver | `org.xerial:sqlite-jdbc` | |
 | Migrations | Flyway via `micronaut-flyway` | Confirmed 2026-08-23 |
 | Validation | `micronaut-validation` (Jakarta Bean Validation) | |
 | Tests | JUnit 5 + `@MicronautTest` + Micronaut HTTP client | |
 
-#### Why Micronaut 4.10.17 and not 5.x
+#### Why Micronaut 4.10.17 and not 5.x — *historical, resolved 2026-08-23*
+
+> This section records why the project originally stayed on Micronaut 4. It was resolved by
+> [[micronaut-5-migration]]: the project now runs Micronaut 5.1.1 on Java 25. Kept because the
+> reasoning explains how the pin came about, not because the pin still holds.
 
 Micronaut **5** is the current release line (5.1.1, 2026-08-17) and Maven Central resolves `latest`
-to it. This project pins **4.10.17** (2026-07-08, the newest 4.x) instead, deliberately.
+to it. This project pinned **4.10.17** (2026-07-08, the newest 4.x) instead, deliberately.
 
 Micronaut 5 has a **JDK 25 baseline** — its own guide states it outright. Java 21 was chosen for
 this project, so Micronaut 5 is not an option without reopening that decision. Micronaut 4 requires
@@ -86,7 +94,7 @@ startup fast and avoids pulling Hibernate in for what is five CRUD operations.
 As built:
 
 ```
-build.gradle.kts              Micronaut plugin 4.6.2, Java 21 toolchain
+build.gradle.kts              Micronaut plugin (5.0.2 since the migration), Java 25 toolchain
 gradle.properties             micronautVersion=4.10.17 (pinned)
 settings.gradle.kts
 src/main/java/dev/petrov/tasks/
@@ -295,6 +303,8 @@ nullable column needs the same annotation.
 
 **2. There is no `Dialect.SQLITE`.** Micronaut Data offers MYSQL, POSTGRES, SQL_SERVER, ORACLE, H2
 and ANSI. `Dialect.ANSI` is correct here and SQLite accepts the generated SQL.
+*(True of Micronaut Data 4. Data 5 added a SQLITE dialect and the project switched to it on
+2026-08-23 — see [[micronaut-5-migration]].)*
 
 **3. Micronaut 4 does not bundle a YAML parser.** `application.yml` is inert without an explicit
 `runtimeOnly("org.yaml:snakeyaml")`. The build fails loudly with a clear message, so this costs
@@ -317,7 +327,7 @@ None. Every decision is settled as of 2026-08-23 and recorded above:
 | Package name | `dev.petrov.tasks` |
 | Database file location | `tasks.db` at repo root |
 | Repeated `DELETE` | `204`, idempotent |
-| Micronaut version | `4.10.17` (pinned; Java 21 rules out 5.x) |
+| Micronaut version | `4.10.17` at the time — **now 5.1.1**, see [[micronaut-5-migration]] |
 
 This spec is ready to implement. Record new questions here as they come up rather than deciding
 them silently in code.

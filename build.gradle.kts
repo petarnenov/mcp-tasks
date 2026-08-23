@@ -1,62 +1,32 @@
+// Root project holds shared configuration only. The two services live in :task-api and
+// :mcp-server; nothing is built from here.
+
 plugins {
-    id("java")
-    id("io.micronaut.application") version "4.6.2"
+    id("io.micronaut.application") version "5.0.2" apply false
 }
 
-group = "dev.petrov"
-version = "0.1.0"
+subprojects {
+    apply(plugin = "java")
 
-repositories {
-    mavenCentral()
-}
+    group = "dev.petrov"
+    version = "0.1.0"
 
-dependencies {
-    annotationProcessor("io.micronaut:micronaut-http-validation")
-    annotationProcessor("io.micronaut.serde:micronaut-serde-processor")
-    annotationProcessor("io.micronaut.data:micronaut-data-processor")
-    annotationProcessor("io.micronaut.validation:micronaut-validation-processor")
-
-    implementation("io.micronaut:micronaut-http-server-netty")
-    implementation("io.micronaut.serde:micronaut-serde-jackson")
-    implementation("io.micronaut.validation:micronaut-validation")
-    implementation("io.micronaut.data:micronaut-data-jdbc")
-    implementation("io.micronaut.sql:micronaut-jdbc-hikari")
-    implementation("io.micronaut.flyway:micronaut-flyway")
-    // Provides /health, which the Compose healthcheck probes.
-    implementation("io.micronaut:micronaut-management")
-    implementation("org.flywaydb:flyway-core")
-
-    runtimeOnly("org.xerial:sqlite-jdbc:${property("sqliteJdbcVersion")}")
-    runtimeOnly("ch.qos.logback:logback-classic")
-    // Micronaut 4 does not bundle a YAML parser; application.yml is inert without it.
-    runtimeOnly("org.yaml:snakeyaml")
-
-    testImplementation("io.micronaut:micronaut-http-client")
-}
-
-application {
-    mainClass = "dev.petrov.tasks.Application"
-}
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+    repositories {
+        mavenCentral()
     }
-}
 
-micronaut {
-    version(property("micronautVersion") as String)
-    runtime("netty")
-    testRuntime("junit5")
-    processing {
-        incremental(true)
-        annotations("dev.petrov.tasks.*")
+    extensions.configure<JavaPluginExtension> {
+        toolchain {
+            // Micronaut 5 has a JDK 25 baseline, so this is forced by the framework rather than
+            // chosen. The Gradle daemon must also run on 25 -- see gradle/gradle-daemon-jvm.properties.
+            languageVersion = JavaLanguageVersion.of(25)
+        }
     }
-}
 
-tasks.withType<Test>().configureEach {
-    useJUnitPlatform()
-    testLogging {
-        events("passed", "skipped", "failed")
+    tasks.withType<Test>().configureEach {
+        useJUnitPlatform()
+        testLogging {
+            events("passed", "skipped", "failed")
+        }
     }
 }

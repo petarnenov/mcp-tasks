@@ -11,7 +11,7 @@ datasources:
     # running in Docker use one database rather than two that silently diverge.
     url: jdbc:sqlite:data/tasks.db
     driver-class-name: org.sqlite.JDBC
-    dialect: ANSI
+    dialect: SQLITE
     schema-generate: NONE
     # SQLite takes a single writer. One connection removes SQLITE_BUSY entirely instead of
     # relying on a busy-timeout to paper over contention.

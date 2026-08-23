@@ -11,19 +11,23 @@ category genuinely does not exist here, it says so rather than inventing a comma
 generated list. The Gradle and Docker commands underneath are shown here so the mapping is visible,
 but prefer the make target — it is what the Makefile keeps correct.
 
-Everything runs from the repository root. The Gradle wrapper is pinned to **Gradle 8.14.5**; do not
-use a system `gradle` (the local one is 9.4.1, and the Micronaut plugin 4.6.2 targets Gradle 8).
+Everything runs from the repository root. The Gradle wrapper is pinned to **Gradle 9.7.1** and the
+daemon to **Java 25** (`gradle/gradle-daemon-jvm.properties`). Do not use a system `gradle` — it may
+run on the wrong JVM, and the Micronaut plugin 5.x refuses anything below JVM 25.
 
 | Gate | Make target | Underneath | Proves |
 |---|---|---|---|
 | Help | `make` | — | Lists every target. Builds nothing |
 | Build | `make build` | `./gradlew build` | Compiles, runs annotation processors, runs all tests, assembles |
-| Test (all) | `make test` | `./gradlew test` | All 23 tests pass |
+| Test (all) | `make test` | `./gradlew test` | All **32** tests pass (23 api + 9 mcp) |
 | Test (one) | `make test-one TEST='*TimestampsTest*'` | `./gradlew test --tests …` | One class or method |
-| Run (host) | `make run` | `./gradlew run` | Service on `:8080`, database at `data/tasks.db` |
+| Run (host) | `make run` | `./gradlew :task-api:run` | Task API on `:8080`, database at `data/tasks.db` |
+| Run MCP (host) | `make run-mcp` | `./gradlew :mcp-server:run` | MCP server on `:8877`; needs `make run` in another shell |
 | Clean | `make clean` | `./gradlew clean` | Discards `build/`. Leaves the database alone |
-| Image | `make docker-build` | `docker build -t tasks:latest .` | Builds the container image (~354 MB) |
-| Run (Docker) | `make up` | `docker compose up --build -d` | nginx on `:8080` in front of the api; both healthchecks green |
+| Image | `make docker-build` | two `docker build` calls | Builds `tasks` and `tasks-mcp` (Java 25 runtime) |
+| Run (Docker) | `make up` | `docker compose up --build -d --scale mcp=3` | nginx on `:8080` and `:8877`; api + 3 MCP replicas, all healthy |
+| Scale | `make scale REPLICAS=n` | `docker compose up -d --scale mcp=n` | Changes the MCP replica count. The api cannot be scaled |
+| Logs (mcp) | `make logs-mcp` | `docker compose logs -f mcp` | All MCP replicas |
 | Stop | `make down` | `docker compose down` | Stops both. `./data` survives |
 | Status | `make ps` | `docker compose ps` | Container state **and health**, both services |
 | Logs (all) | `make logs` | `docker compose logs -f` | Both services, interleaved by time |
@@ -72,9 +76,13 @@ src/test/java/dev/petrov/tasks/
   PersistenceTest.java      task-api obligations 17-19, across full application restarts
   TimestampsTest.java       timestamp format and monotonicity, with a frozen Clock
   HealthTest.java           docker-and-make obligation 17: /health returns UP
+
+mcp-server/src/test/java/dev/petrov/tasks/mcp/
+  McpServerTest.java        mcp-server obligations 1-8, over real HTTP
+  StubTasksApi.java         a stand-in task API served from the same test context
 ```
 
-23 tests total.
+**32 tests total** — 23 for the api, 9 for the MCP server.
 
 **Naming.** Each test in `TaskControllerTest` carries a `@DisplayName` starting with the number of
 the correctness obligation it proves in [`specs/task-api.md`](specs/task-api.md). That mapping is
@@ -147,10 +155,16 @@ The most useful part of this file. Current, honest state:
    hand once, on 2026-08-23. A change to `Dockerfile`, `compose.yaml`, `nginx/nginx.conf` or
    `Makefile` has no safety net beyond running it. The 23 JUnit tests talk to the application
    directly and would stay green with the proxy completely broken.
-10. **No image scanning.** Base images are digest-pinned, which means CVE fixes require a
+10. **No real MCP client has connected.** The protocol was exercised with curl and from the test
+    suite, which proves transport and tool contracts but not integration — a client may differ on
+    session headers, `Accept` negotiation or protocol version. See [[mcp-server]] obligation 4.
+11. **Nothing tests nginx's `/mcp` route on 8080 automatically.** Two entrances to one backend
+    means two paths to keep in step, and only one of them is covered by a checked-in test.
+12. **No image scanning.** Base images are digest-pinned, which means CVE fixes require a
     deliberate edit and nothing currently tells you when one is due.
-11. **Nginx fronts one backend and cannot front more.** Not a bug — SQLite takes one writer. The
-    guard is `container_name: tasks-api`, which makes `--scale` fail. If anyone removes it, the
-    scaling refusal disappears silently and two writers hit one file. See [[nginx-load-balancer]].
-12. **Rate limiting is wired but effectively off** at `100r/s` / burst 200. The mechanism is
+13. **The api fronts one backend and cannot front more.** Not a bug — SQLite takes one writer. The
+    guard is `container_name: tasks-api`, which makes `--scale api` fail. If anyone removes it, the
+    refusal disappears silently and two writers hit one file. The **mcp** service deliberately has
+    no such line. See [[nginx-load-balancer]] and [[mcp-server]].
+14. **Rate limiting is wired but effectively off** at `100r/s` / burst 200. The mechanism is
     verified; the number is not tuned to anything real.

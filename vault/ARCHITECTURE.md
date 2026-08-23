@@ -5,7 +5,10 @@ checked against the working tree.
 
 ## What this system is
 
-A single-user task list with an HTTP interface. You create tasks, list them, read one, replace one,
+Two services. A single-user task list with an HTTP interface, and an MCP server that exposes it
+as tools so a model can use it from a conversation.
+
+The task list: You create tasks, list them, read one, replace one,
 and delete one. Each task carries a title, optional free-text description, a workflow status, and a
 priority — no due dates, no assignment, no accounts. It runs on one machine, stores everything in
 one SQLite file next to the code, and is intended to be started, used, and stopped by the person
@@ -19,7 +22,7 @@ Model Context Protocol. Do not infer scope from it.
 
 | Component | Path | Owns |
 |---|---|---|
-| Entry point | `src/main/java/dev/petrov/tasks/Application.java` | Boots Micronaut. Nothing else |
+| Entry point | `task-api/src/main/java/dev/petrov/tasks/Application.java` | Boots Micronaut. Nothing else |
 | HTTP layer | `TaskController.java` | The five routes, status codes, `Location` header. No business rules |
 | Business rules | `TaskService.java` | Id generation, defaults, full-replace semantics, not-found |
 | Persistence | `TaskRepository.java` | An empty interface — Micronaut Data writes the SQL at compile time |
@@ -31,7 +34,8 @@ Model Context Protocol. Do not infer scope from it.
 | Schema | `src/main/resources/db/migration/V1__create_tasks.sql` | The `tasks` table |
 | Config | `src/main/resources/application.yml` | Datasource, port, Flyway |
 | Container | `Dockerfile`, `.dockerignore`, `compose.yaml` | Multi-stage image, digest-pinned bases, bind-mounted database |
-| Front door | `nginx/nginx.conf` | The only published port. Proxies to the api container, which publishes nothing |
+| Front door | `nginx/nginx.conf` | The only published ports, 8080 and 8877. Both backends publish nothing |
+| MCP server | `mcp-server/src/main/java/dev/petrov/tasks/mcp/` | Five `@Tool` methods over an HTTP client to the api. Holds no state |
 | Entry point | `Makefile` | The documented way to run anything here. `make` lists the targets |
 
 Roughly 880 lines of Java including tests.
@@ -55,6 +59,24 @@ Roughly 880 lines of Java including tests.
 body. `TaskService.delete` (`src/main/java/dev/petrov/tasks/TaskService.java:83`) throws nothing —
 see Decisions.
 
+## The two services, and why only one scales
+
+| | `api` | `mcp` |
+|---|---|---|
+| Owns state | yes — one SQLite file | **no** — forwards over HTTP |
+| Replicas | exactly **1**, enforced by `container_name` | **3** by default, `make scale REPLICAS=n` |
+| Published port | none — nginx owns 8080 | none — nginx owns 8877 and `8080/mcp` |
+
+The asymmetry is the whole design. SQLite takes a single writer, so a second `api` replica is data
+corruption rather than throughput; `container_name: tasks-api` makes `--scale api=2` fail outright
+and is a **safety interlock, not cosmetics**. The MCP server holds nothing, so any replica can
+answer any request — `micronaut-mcp` runs it stateless, which is what removes the need for session
+affinity at the proxy.
+
+**Scaling the MCP layer does not raise the ceiling.** More replicas accept more concurrent tool
+calls, and they all funnel into one api with `maximum-pool-size: 1`. The bottleneck moves; it does
+not disappear.
+
 ## Boundaries
 
 - **The controller holds no business rules.** It maps HTTP to service calls and back. Defaults, id
@@ -68,7 +90,10 @@ see Decisions.
 - **Nothing writes SQL by hand** except the Flyway migrations. Queries come from Micronaut Data.
 - **`Timestamps` is the only place that reads the clock.** No `Instant.now()` anywhere else; that
   is what keeps the format consistent and the monotonicity guarantee real.
-- **In Docker, nothing reaches the application except through nginx.** The `api` service publishes
+- **The MCP server talks to the api over HTTP like any other client.** It does not share code,
+  a database connection, or DTO classes with it. The wire types in `mcp-server` are deliberate
+  duplicates: a shared module would let a change on one side silently bind the other.
+- **In Docker, nothing reaches either application except through nginx.** The `api` service publishes
   no host port; `${PORT:-8080}` belongs to nginx. `make run` (no Docker) still binds the app
   directly — that is the one path that bypasses the proxy, and it is a development convenience.
 
@@ -115,16 +140,22 @@ Environment variables, none of them required — all have working defaults in `a
 
 The non-obvious choices, and why. These are the ones that look wrong without context.
 
-**Micronaut 4.10.17, not 5.x.** Micronaut 5 has a JDK 25 baseline; this project targets Java 21, so
-the 4.x line is required. The two move together — adopting Micronaut 5 means moving the toolchain
-to Java 25 first. Pinned in `gradle.properties`.
+**Micronaut 5.1.1 on Java 25.** Migrated from Micronaut 5.1.1 / Java 25 on 2026-08-23; see
+[[micronaut-5-migration]]. **Java 25 is not an independent preference** — Micronaut 5 has a JDK 25
+baseline, so the language level is forced by the framework. The two move together in both
+directions.
 
-**Gradle wrapper pinned to 8.14.5.** The Micronaut Gradle plugin 4.6.2 targets Gradle 8; plugin 5.x
-is the Gradle 9 / JDK 25 generation. Use `./gradlew`, not a system `gradle`.
+**The Gradle daemon itself runs on Java 25**, pinned by `gradle/gradle-daemon-jvm.properties`. The
+Micronaut Gradle plugin 5.x requires the *build* JVM to be 25, not merely the toolchain, so
+`languageVersion = JavaLanguageVersion.of(25)` alone is not enough. `settings.gradle.kts` applies
+the **foojay resolver** so a machine without JDK 25 provisions one rather than failing.
 
-**`Dialect.ANSI`, not `SQLITE`** (`TaskRepository.java:15`). Micronaut Data has no SQLite dialect —
-the enum offers MYSQL, POSTGRES, SQL_SERVER, ORACLE, H2 and ANSI. Plain ANSI SQL is what these CRUD
-operations need, and SQLite accepts it. This is not an oversight to be "fixed".
+**Gradle wrapper pinned to 9.7.1.** Plugin 5.x is the Gradle 9 generation. Use `./gradlew`, never a
+system `gradle` — the system one may be on the wrong JVM.
+
+**`Dialect.SQLITE`** (`TaskRepository.java`). This was `Dialect.ANSI` until 2026-08-23, because
+Micronaut Data 4 genuinely had no SQLite dialect and ANSI was the correct workaround. Micronaut
+Data 5 added one. The old justification is gone; do not reinstate ANSI thinking it is a fix.
 
 **Timestamps are fixed-width ISO-8601 strings, not a temporal type.** SQLite has no native date
 type, so something has to choose the encoding. Text stays readable when someone opens the file with
@@ -156,8 +187,15 @@ construct a record from a row with a null component unless it is annotated, and 
 runtime `DataAccessException` on read, not a compile error. If you add another nullable column,
 annotate it.
 
-**`runtimeOnly("org.yaml:snakeyaml")`** in `build.gradle.kts`. Micronaut 4 does not bundle a YAML
-parser. Without it the build fails outright with a clear message, but the reason is not obvious.
+**`runtimeOnly("org.yaml:snakeyaml")`** in `build.gradle.kts`. Neither Micronaut 4 nor 5 bundles a
+YAML parser — re-checked on 2026-08-23 by removing it and watching the build fail. Without it the
+failure is loud but the reason is not obvious.
+
+**The runtime image installs `curl`.** `eclipse-temurin:25-jre` ships no `curl`, `wget` or `nc`;
+the Java 21 image had curl and wget. The compose healthcheck probes `/health` over HTTP, so without
+that `apt-get` line the container starts and simply never reports healthy. A TCP-only probe was
+rejected: a JVM with an open socket and a broken datasource would pass it, which is the exact case
+`/health` exists to catch.
 
 **There is no self-contained jar.** Neither `tasks-<version>.jar` nor `tasks-<version>-runner.jar`
 runs on its own — the runner jar's manifest Class-Path points at sibling `resources/` and `libs/`

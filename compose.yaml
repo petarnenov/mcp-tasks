@@ -4,6 +4,7 @@ services:
   api:
     build:
       context: .
+      dockerfile: task-api/Dockerfile
     image: ${IMAGE:-tasks}:${TAG:-latest}
     # A fixed name also makes `--scale api=2` fail outright. That is deliberate: the app stores
     # state in one SQLite file and SQLite takes one writer, so two replicas is data corruption,
@@ -30,6 +31,28 @@ services:
     # Deliberately no `restart:` policy. This is a tool the user starts on purpose; it should
     # not come back to life on every Docker daemon start.
 
+  mcp:
+    build:
+      context: .
+      dockerfile: mcp-server/Dockerfile
+    image: ${MCP_IMAGE:-tasks-mcp}:${TAG:-latest}
+    # NO container_name, deliberately -- a fixed name is what makes `--scale` impossible, which
+    # is the point on the api service and would be a bug here. This server holds no state, so
+    # any replica can serve any request.
+    depends_on:
+      api:
+        condition: service_healthy
+    expose:
+      - "8877"
+    environment:
+      TASKS_API_URL: http://api:8080
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8877/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
   nginx:
     # Pinned by digest, matching the decision made for the Temurin images.
     #   nginx:alpine -> nginx 1.31.4 on Alpine 3.24 (resolved 2026-08-23)
@@ -40,8 +63,11 @@ services:
       api:
         # Without this nginx comes up first and the first requests 502 while the JVM boots.
         condition: service_healthy
+      mcp:
+        condition: service_healthy
     ports:
       - "${PORT:-8080}:8080"
+      - "${MCP_PORT:-8877}:8877"
     volumes:
       # Read-only, and a file in version control rather than baked into an image: editing it
       # needs `make nginx-reload`, not a rebuild.
