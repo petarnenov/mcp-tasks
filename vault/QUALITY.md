@@ -7,23 +7,40 @@ category genuinely does not exist here, it says so rather than inventing a comma
 
 ## Gate commands
 
-All commands run from the repository root, through the Gradle wrapper (`gradlew`, pinned to
-**Gradle 8.14.5**). Do not use a system `gradle` — the local one is 9.4.1, and the Micronaut Gradle
-plugin 4.6.2 that this project uses targets the Gradle 8 line.
+**`make` is the entry point for everything in this repo.** Run it with no arguments for the
+generated list. The Gradle and Docker commands underneath are shown here so the mapping is visible,
+but prefer the make target — it is what the Makefile keeps correct.
 
-| Gate | Command | Proves |
-|---|---|---|
-| Build | `./gradlew build` | Compiles, runs annotation processors, runs all tests, assembles the jar |
-| Test (all) | `./gradlew test` | All 22 tests pass |
-| Test (single class) | `./gradlew test --tests '*TimestampsTest*'` | One class in isolation |
-| Test (single method) | `./gradlew test --tests '*TaskControllerTest.deleteIsIdempotent'` | One test |
-| Run | `./gradlew run` | Service on `http://localhost:8080`, `tasks.db` created at repo root |
-| Clean | `./gradlew clean` | Discards `build/` |
+Everything runs from the repository root. The Gradle wrapper is pinned to **Gradle 8.14.5**; do not
+use a system `gradle` (the local one is 9.4.1, and the Micronaut plugin 4.6.2 targets Gradle 8).
+
+| Gate | Make target | Underneath | Proves |
+|---|---|---|---|
+| Help | `make` | — | Lists every target. Builds nothing |
+| Build | `make build` | `./gradlew build` | Compiles, runs annotation processors, runs all tests, assembles |
+| Test (all) | `make test` | `./gradlew test` | All 23 tests pass |
+| Test (one) | `make test-one TEST='*TimestampsTest*'` | `./gradlew test --tests …` | One class or method |
+| Run (host) | `make run` | `./gradlew run` | Service on `:8080`, database at `data/tasks.db` |
+| Clean | `make clean` | `./gradlew clean` | Discards `build/`. Leaves the database alone |
+| Image | `make docker-build` | `docker build -t tasks:latest .` | Builds the container image (~354 MB) |
+| Run (Docker) | `make up` | `docker compose up --build -d` | Service on `:8080`, healthcheck reports readiness |
+| Stop | `make down` | `docker compose down` | Stops it. `./data` survives |
+| Status | `make ps` | `docker compose ps` | Container state **and health** |
+| Logs | `make logs` | `docker compose logs -f api` | Follows output |
+| Shell | `make shell` | `docker compose exec api /bin/bash` | Inside the running container |
+| DB shell | `make db-shell` | `sqlite3 data/tasks.db` | Reads the database directly |
+| DB reset | `make db-reset` | `rm -f data/tasks.db*` | **Destructive.** Prompts first |
+
+Overridable: `PORT=9000 make up`, `IMAGE=… TAG=… make docker-build`.
 
 **Typecheck** is not a separate gate: `javac` runs as part of `compileJava`, and Micronaut's
-annotation processors generate the repository implementation and bean definitions at that point.
-A compile failure *is* the typecheck failure — including Micronaut Data errors about entity
-mapping, which surface at compile time rather than at first query.
+annotation processors generate the repository implementation and bean definitions at that point. A
+compile failure *is* the typecheck failure — including Micronaut Data errors about entity mapping,
+which surface at compile time rather than at first query.
+
+**There is no runnable jar.** `java -jar build/libs/…` fails for both jars this project produces —
+see *No self-contained jar* in [ARCHITECTURE.md](ARCHITECTURE.md#decisions--constraints). Use
+`make run`, `make up`, or `./gradlew installDist`.
 
 ### Categories this repo genuinely lacks
 
@@ -34,18 +51,23 @@ mapping, which surface at compile time rather than at first query.
 | Coverage | No JaCoCo. There is no coverage number for this project |
 | CI | No `.github/workflows/`, no pipeline. Gates run locally only |
 | API docs | No OpenAPI/Swagger generation (`micronaut-openapi` is not on the classpath) |
+| Image scanning | No Trivy/Grype step. Base images are digest-pinned but never scanned |
 
-Adding any of these is a real change, not a config tweak — do not claim a gate exists until its
-command runs.
+There are deliberately **no `make lint` / `make fmt` targets**: a target that does nothing is worse
+than a missing one. Adding any of these is a real change, not a config tweak — do not claim a gate
+exists until its command runs.
 
 ## Test layout & conventions
 
 ```
 src/test/java/dev/petrov/tasks/
-  TaskControllerTest.java   obligations 1-16, over real HTTP against a real SQLite file
-  PersistenceTest.java      obligations 17-19, across full application restarts
-  TimestampsTest.java       unit tests for the timestamp format and monotonicity
+  TaskControllerTest.java   task-api obligations 1-16, real HTTP against a real SQLite file
+  PersistenceTest.java      task-api obligations 17-19, across full application restarts
+  TimestampsTest.java       timestamp format and monotonicity, with a frozen Clock
+  HealthTest.java           docker-and-make obligation 17: /health returns UP
 ```
+
+23 tests total.
 
 **Naming.** Each test in `TaskControllerTest` carries a `@DisplayName` starting with the number of
 the correctness obligation it proves in [`specs/task-api.md`](specs/task-api.md). That mapping is
@@ -72,7 +94,7 @@ real database, and the tests talk to a real HTTP server. The only injected seam 
 
 A change ships when:
 
-- [ ] `./gradlew build` passes from a clean checkout.
+- [ ] `make build` passes from a clean checkout.
 - [ ] Every new behaviour has a test, and every changed behaviour has its existing test updated
       rather than deleted.
 - [ ] If the change alters an API contract, the matching **correctness obligation** in
@@ -81,9 +103,13 @@ A change ships when:
 - [ ] A schema change is a **new** `V<n>__*.sql` migration. Never edit an applied migration:
       Flyway checksums them and an edited file breaks every existing database.
 - [ ] `tasks.db` is not staged. It is in `.gitignore`; confirm with `git status`.
-- [ ] Manual check for anything touching HTTP behaviour: `./gradlew run`, then exercise the
-      endpoint with `curl`. The tests use Micronaut's client, which is more forgiving than curl
-      about some header and encoding details.
+- [ ] Manual check for anything touching HTTP behaviour: `make run`, then exercise the endpoint
+      with `curl`. The tests use Micronaut's client, which is more forgiving than curl about some
+      header and encoding details.
+- [ ] Anything touching packaging, config or the database path: `make up` and confirm `make ps`
+      reports **healthy**, not merely `Up`. The container exercises a different code path than
+      `make run` — it is where the missing-dependencies packaging bug surfaced.
+- [ ] `data/` is not staged. Confirm with `git status`.
 
 ## Known gaps
 
@@ -105,3 +131,12 @@ The most useful part of this file. Current, honest state:
 7. **Flyway's SQLite support is inside `flyway-core`** rather than a dedicated module, and it is
    community-tier. It works here, verified by `PersistenceTest`, but it is not the path Redgate
    tests most heavily.
+8. **The container has never been run on Linux.** Obligation 7 of [[docker-and-make]] — a non-root
+   container writing to a bind-mounted host directory — passes on macOS only because Docker
+   Desktop's file sharing remaps ownership. On Linux this can be `permission denied` on first
+   write. Treat the container as unverified on Linux until someone runs `make up` there.
+9. **Nothing tests the Makefile or the Docker setup automatically.** Their obligations were checked
+   by hand once, on 2026-08-23. A change to `Dockerfile`, `compose.yaml` or `Makefile` has no
+   safety net beyond running it.
+10. **No image scanning.** Base images are digest-pinned, which means CVE fixes require a
+    deliberate edit and nothing currently tells you when one is due.

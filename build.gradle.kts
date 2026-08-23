@@ -22,6 +22,8 @@ dependencies {
     implementation("io.micronaut.data:micronaut-data-jdbc")
     implementation("io.micronaut.sql:micronaut-jdbc-hikari")
     implementation("io.micronaut.flyway:micronaut-flyway")
+    // Provides /health, which the Compose healthcheck probes.
+    implementation("io.micronaut:micronaut-management")
     implementation("org.flywaydb:flyway-core")
 
     runtimeOnly("org.xerial:sqlite-jdbc:${property("sqliteJdbcVersion")}")

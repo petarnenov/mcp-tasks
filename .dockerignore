@@ -1,0 +1,31 @@
+# Keep the build context small and free of host state. Anything the image needs is copied
+# explicitly in the Dockerfile.
+
+# Build output and caches — the image builds these itself
+build/
+.gradle/
+
+# Application data — never goes into an image
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Version control and project docs
+.git/
+.gitignore
+vault/
+CLAUDE.md
+README.md
+
+# Container files themselves
+Dockerfile
+.dockerignore
+compose.yaml
+Makefile
+
+# IDE and OS cruft
+.idea/
+.vscode/
+*.iml
+.DS_Store

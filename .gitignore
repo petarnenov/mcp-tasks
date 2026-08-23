@@ -1,7 +1,6 @@
-# SQLite database — never commit application data
-tasks.db
-tasks.db-shm
-tasks.db-wal
+# SQLite database — never commit application data.
+# Covers both the local run and the container's bind mount.
+data/
 
 # Gradle
 .gradle/

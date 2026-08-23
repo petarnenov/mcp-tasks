@@ -196,18 +196,18 @@ caller who needs to know whether the task was there can `GET` it first.
 
 | Key | Purpose | Default |
 |---|---|---|
-| `datasources.default.url` | SQLite JDBC URL | `jdbc:sqlite:tasks.db` — `tasks.db` at repo root |
+| `datasources.default.url` | SQLite JDBC URL | `jdbc:sqlite:data/tasks.db` |
 | `micronaut.server.port` | Listen port | `8080` |
 | `flyway.datasources.default.enabled` | Run migrations at startup | `true` |
 
-The database file is **`tasks.db` at the repository root** (decided 2026-08-23) — no `data/`
-subdirectory. The relative JDBC URL means the file lands wherever the process is started from, so
-`./gradlew run` from the repo root is the supported way to run it.
+The database file is **`data/tasks.db`** (superseded 2026-08-23 by [[docker-and-make]]; it was
+originally `tasks.db` at the repository root). The container bind-mounts `./data` at `/data`, so
+running locally and running in Docker use one database instead of two that silently diverge.
 
-**Required at scaffold time:** create a `.gitignore` containing `tasks.db` (plus the SQLite sidecar
-files `tasks.db-shm` and `tasks.db-wal`). The database must never be committed. This project is not
-currently a git repository at all, so `git init` and the `.gitignore` are both part of the first
-implementation change.
+The relative JDBC URL means the file lands relative to the process working directory — run from
+the repository root, which is what `make run` does.
+
+`data/` is in `.gitignore` and `.dockerignore`. The database must never be committed.
 
 ## Correctness obligations
 

@@ -1,0 +1,26 @@
+# No `version:` key — it is obsolete under the Compose Spec and current Compose warns about it.
+
+services:
+  api:
+    build:
+      context: .
+    image: ${IMAGE:-tasks}:${TAG:-latest}
+    container_name: tasks-api
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      # Absolute path inside the container; the bind mount below puts it on the host at ./data.
+      DATASOURCES_DEFAULT_URL: jdbc:sqlite:/data/tasks.db
+    volumes:
+      # Bind mount rather than a named volume, so the database stays openable from the host
+      # with `sqlite3 data/tasks.db`.
+      - ./data:/data
+    healthcheck:
+      # curl is present in the pinned eclipse-temurin JRE image (verified 2026-08-23, 8.18.0).
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    # Deliberately no `restart:` policy. This is a tool the user starts on purpose; it should
+    # not come back to life on every Docker daemon start.

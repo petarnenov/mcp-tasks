@@ -30,6 +30,8 @@ Model Context Protocol. Do not infer scope from it.
 | Time | `Timestamps.java`, `ClockFactory.java` | The single source of timestamp strings |
 | Schema | `src/main/resources/db/migration/V1__create_tasks.sql` | The `tasks` table |
 | Config | `src/main/resources/application.yml` | Datasource, port, Flyway |
+| Container | `Dockerfile`, `.dockerignore`, `compose.yaml` | Multi-stage image, digest-pinned bases, bind-mounted database |
+| Entry point | `Makefile` | The documented way to run anything here. `make` lists the targets |
 
 Roughly 880 lines of Java including tests.
 
@@ -68,7 +70,7 @@ see Decisions.
 
 ## State & data
 
-All persistent state is one SQLite file, **`tasks.db` at the repository root**, holding one table:
+All persistent state is one SQLite file, **`data/tasks.db`**, holding one table:
 
 ```sql
 CREATE TABLE tasks (
@@ -84,20 +86,26 @@ CREATE TABLE tasks (
 
 Migrations live in `src/main/resources/db/migration/` and Flyway applies them at startup, tracking
 them in a `flyway_schema_history` table it creates itself. There are no caches and no other stores.
-The JDBC URL is relative, so the file lands in the process's working directory — run from the repo
-root.
 
-`tasks.db` is git-ignored, along with the `-shm` and `-wal` sidecar files.
+`data/` is the same directory the container bind-mounts at `/data`, so `make run` and `make up`
+share one database rather than quietly keeping two. The JDBC URL is relative, so run from the
+repository root. `data/` is git-ignored and excluded from the Docker build context.
 
 ## External dependencies
 
-**None.** No third-party services, no outbound network calls, no scheduled jobs, no message queues,
-no authentication provider.
+**No services.** No third-party APIs, no outbound network calls, no scheduled jobs, no message
+queues, no authentication provider. Docker is a packaging choice, not a dependency of the code.
 
-There are also **no environment variables and no secrets**. Everything configurable sits in
-`application.yml`: the datasource URL, the server port, and whether Flyway runs. Any of them can be
-overridden at runtime with a `-D` system property or the matching `MICRONAUT_*` variable if needed,
-but nothing requires it.
+**No secrets.** Nothing here needs a credential.
+
+Environment variables, none of them required — all have working defaults in `application.yml`:
+
+| Variable | Purpose | Used by |
+|---|---|---|
+| `DATASOURCES_DEFAULT_URL` | Overrides the SQLite JDBC URL | `compose.yaml` sets it to `jdbc:sqlite:/data/tasks.db` |
+| `MICRONAUT_SERVER_PORT` | Overrides the listen port | available, not currently used |
+| `PORT` | Host-side published port | `Makefile` / `compose.yaml`, defaults to 8080 |
+| `IMAGE`, `TAG` | Image name and tag | `Makefile`, default `tasks:latest` |
 
 ## Decisions & constraints
 
@@ -146,3 +154,17 @@ annotate it.
 
 **`runtimeOnly("org.yaml:snakeyaml")`** in `build.gradle.kts`. Micronaut 4 does not bundle a YAML
 parser. Without it the build fails outright with a clear message, but the reason is not obvious.
+
+**There is no self-contained jar.** Neither `tasks-<version>.jar` nor `tasks-<version>-runner.jar`
+runs on its own — the runner jar's manifest Class-Path points at sibling `resources/` and `libs/`
+directories that exist only under `build/docker/main/layers/`. `java -jar` on either fails with
+`NoClassDefFoundError`. Use `make run`, or `./gradlew installDist` for a standalone launcher. The
+container copies the layered layout for the same reason.
+
+**Base images are pinned by digest** in the `Dockerfile`, not by tag. A floating tag means the same
+Dockerfile produces a different image next month. The cost is that security patches need a
+deliberate edit — which is the point: the upgrade shows up in a diff.
+
+**Makefile shell flags go on `SHELL`, not `.SHELLFLAGS`.** GNU Make 3.81, which macOS ships,
+ignores `.SHELLFLAGS` silently — a Makefile using it looks strict while letting failed pipes pass.
+`SHELL := /bin/bash -o pipefail -e` works on both 3.81 and 4.x. Do not "modernize" this.
