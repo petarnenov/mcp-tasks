@@ -33,6 +33,7 @@ newer** (`engines` in `package.json`); the container is pinned to Node 24 LTS.
 | Test (one) | `make test-one TEST='*TimestampsTest*'` | `./gradlew test --tests …` | One **api** class or method. There is no mcp equivalent; use `npx vitest -t '…'` |
 | Run (host) | `make run` | `./gradlew :task-api:run` | Task API on `:8080`, database at `data/tasks.db` |
 | Run MCP (host) | `make run-mcp` | `npm --prefix mcp-server run dev` | Compiles, then MCP server on `:8877`; needs `make run` in another shell |
+| Inspector | `make run-mcp-inspector` | `npx -y @modelcontextprotocol/inspector@2.3.0` | Opens the MCP Inspector web UI. **Not a gate** — it runs the tool, not the server, and needs the server already up |
 | Clean | `make clean` | `./gradlew clean && rm -rf mcp-server/dist` | Discards build output. Leaves the database and `node_modules` alone |
 | Image | `make docker-build` | two `docker build` calls | Builds `tasks` (Java 25) and `tasks-mcp` (Node 24) |
 | Run (Docker) | `make up` | `docker compose up --build -d --scale mcp=3` | nginx on `:8080` and `:8877`; api + 3 MCP replicas, all healthy |
@@ -48,7 +49,14 @@ newer** (`engines` in `package.json`); the container is pinned to Node 24 LTS.
 | DB shell | `make db-shell` | `sqlite3 data/tasks.db` | Reads the database directly |
 | DB reset | `make db-reset` | `rm -f data/tasks.db*` | **Destructive.** Prompts first |
 
-Overridable: `PORT=9000 make up`, `IMAGE=… TAG=… make docker-build`.
+Overridable: `PORT=9000 make up`, `IMAGE=… TAG=… make docker-build`,
+`INSPECTOR=@modelcontextprotocol/inspector@latest make run-mcp-inspector`.
+
+**The Inspector's Protocol Era defaults to Legacy.** `make run-mcp-inspector` prints a reminder,
+because the default is `Legacy (2025-11-25 handshake)` — the Inspector's own reasoning is that a
+debugging tool should not auto-probe. A connection therefore shows `LEGACY` and `MCP 2025-11-25`
+until the era is switched to **Modern** or **Auto** in that server's Settings panel. That is the
+Inspector's default, not this server's ceiling; see [[mcp-server-typescript]] obligation 14.
 
 **Typecheck is not a separate gate in either service.** For `task-api`, `javac` runs as part of
 `compileJava` and Micronaut's annotation processors generate the repository implementation and bean

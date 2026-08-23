@@ -20,14 +20,17 @@ MCP_PORT ?= 8877
 REPLICAS ?= 3
 COMPOSE ?= docker compose
 GRADLE  := ./gradlew
-# The MCP server is a Node/TypeScript project, not a Gradle module. `-C` keeps every recipe
+# The MCP server is a Node/TypeScript project, not a Gradle module. `--prefix` keeps every recipe
 # runnable from the repository root without a cd that the next line would forget.
 NPM     := npm --prefix mcp-server
+# Pinned so `make run-mcp-inspector` cannot silently change tool underneath you. Bump it
+# deliberately; `npx -y` would otherwise fetch whatever is newest that day.
+INSPECTOR ?= @modelcontextprotocol/inspector@2.3.0
 DB      := data/tasks.db
 
 .PHONY: help build build-api build-mcp test test-api test-mcp test-one run clean install \
-        run-mcp docker-build up down restart scale logs logs-api logs-mcp logs-nginx ps shell \
-        nginx-reload db-shell db-reset
+        run-mcp run-mcp-inspector docker-build up down restart scale logs logs-api logs-mcp \
+        logs-nginx ps shell nginx-reload db-shell db-reset
 
 # ---- Local -------------------------------------------------------------------
 
@@ -35,7 +38,7 @@ help:  ## Print this help
 	@echo "Task API -- available targets:"
 	@echo ""
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
-	  | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+	  | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Overridable: IMAGE=$(IMAGE) MCP_IMAGE=$(MCP_IMAGE) TAG=$(TAG) PORT=$(PORT) MCP_PORT=$(MCP_PORT) REPLICAS=$(REPLICAS)"
 
@@ -71,6 +74,19 @@ run:  ## Run the task API on the host, no Docker (http://localhost:8080)
 # sources directly fails on the first relative import.
 run-mcp: install  ## Run the MCP server on the host, no Docker (needs `make run` in another shell)
 	TASKS_API_URL=$${TASKS_API_URL:-http://localhost:8080} $(NPM) run dev
+
+# Runs the tool, not the server -- the MCP server must already be up (`make up` or `make run-mcp`).
+# Needs network on first run: npx downloads the inspector.
+#
+# Two things to know once it opens, both its defaults rather than ours:
+#   - Transport is Streamable HTTP; the URL is printed below.
+#   - Protocol Era defaults to "Legacy (2025-11-25 handshake)" -- its own docstring says debugging
+#     tools should not auto-probe. Switch it to Modern or Auto in the server's Settings, or the
+#     connection shows LEGACY even though this server serves 2026-07-28.
+run-mcp-inspector:  ## Open the MCP Inspector against the running MCP server
+	@echo "MCP endpoint: http://localhost:$(MCP_PORT)/mcp   (also http://localhost:$(PORT)/mcp)"
+	@echo "In the Inspector, set Protocol Era to Modern or Auto to negotiate 2026-07-28."
+	npx -y $(INSPECTOR)
 
 clean:  ## Remove build output. Does NOT touch the database or node_modules
 	$(GRADLE) clean

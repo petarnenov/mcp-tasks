@@ -188,13 +188,19 @@ The endpoint's posture is unchanged from the Java server — see Non-goals.
 does not force the other's build.
 
 ```
-build      -> build-api + build-mcp
-build-api  -> ./gradlew build
-build-mcp  -> npm ci && npm run build && npm test
-test       -> test-api + test-mcp
-run-mcp    -> npm run dev   (tsc, then node dist/index.js)
-clean      -> ./gradlew clean && rm -rf mcp-server/dist
+build              -> build-api + build-mcp
+build-api          -> ./gradlew build
+build-mcp          -> npm ci && npm run build && npm test
+test               -> test-api + test-mcp
+run-mcp            -> npm run dev   (tsc, then node dist/index.js)
+run-mcp-inspector  -> npx -y @modelcontextprotocol/inspector@2.3.0
+clean              -> ./gradlew clean && rm -rf mcp-server/dist
 ```
+
+`run-mcp-inspector` runs the *tool*, not the server — the server must already be up. The version is
+pinned in `INSPECTOR` rather than left to `npx -y` resolving whatever is newest that day, so the
+debugging tool cannot change under you mid-investigation. The target prints the endpoint and the
+Protocol Era reminder before launching; see [Obligation 20](#obligation-20-and-the-inspectors-own-default).
 
 `run-mcp` compiles first rather than running `src/index.ts` directly. Node strips TypeScript types
 but does **not** resolve a `.js` import specifier to the `.ts` file beside it, so running the
