@@ -31,6 +31,7 @@ Model Context Protocol. Do not infer scope from it.
 | Schema | `src/main/resources/db/migration/V1__create_tasks.sql` | The `tasks` table |
 | Config | `src/main/resources/application.yml` | Datasource, port, Flyway |
 | Container | `Dockerfile`, `.dockerignore`, `compose.yaml` | Multi-stage image, digest-pinned bases, bind-mounted database |
+| Front door | `nginx/nginx.conf` | The only published port. Proxies to the api container, which publishes nothing |
 | Entry point | `Makefile` | The documented way to run anything here. `make` lists the targets |
 
 Roughly 880 lines of Java including tests.
@@ -67,6 +68,9 @@ see Decisions.
 - **Nothing writes SQL by hand** except the Flyway migrations. Queries come from Micronaut Data.
 - **`Timestamps` is the only place that reads the clock.** No `Instant.now()` anywhere else; that
   is what keeps the format consistent and the monotonicity guarantee real.
+- **In Docker, nothing reaches the application except through nginx.** The `api` service publishes
+  no host port; `${PORT:-8080}` belongs to nginx. `make run` (no Docker) still binds the app
+  directly — that is the one path that bypasses the proxy, and it is a development convenience.
 
 ## State & data
 
@@ -104,7 +108,7 @@ Environment variables, none of them required — all have working defaults in `a
 |---|---|---|
 | `DATASOURCES_DEFAULT_URL` | Overrides the SQLite JDBC URL | `compose.yaml` sets it to `jdbc:sqlite:/data/tasks.db` |
 | `MICRONAUT_SERVER_PORT` | Overrides the listen port | available, not currently used |
-| `PORT` | Host-side published port | `Makefile` / `compose.yaml`, defaults to 8080 |
+| `PORT` | Host-side published port — **nginx's**, not the app's | `Makefile` / `compose.yaml`, defaults to 8080 |
 | `IMAGE`, `TAG` | Image name and tag | `Makefile`, default `tasks:latest` |
 
 ## Decisions & constraints
@@ -164,6 +168,22 @@ container copies the layered layout for the same reason.
 **Base images are pinned by digest** in the `Dockerfile`, not by tag. A floating tag means the same
 Dockerfile produces a different image next month. The cost is that security patches need a
 deliberate edit — which is the point: the upgrade shows up in a diff.
+
+**Nginx proxies to one backend, and that is not an accident.** SQLite takes a single writer, so
+replicas behind the proxy would mean two processes writing one file over a bind mount —
+`SQLITE_BUSY` at best, corruption at worst. `container_name: tasks-api` in `compose.yaml` makes
+`docker compose up --scale api=2` fail outright (verified: exit 1). That line is a **safety
+interlock, not cosmetics** — removing it requires replacing SQLite first.
+
+**`proxy_pass` goes through a variable, not a literal hostname** (`nginx/nginx.conf`). With a
+literal, nginx resolves the backend once at startup and caches it forever, so a restarted `api`
+container on a new IP produces 502s until nginx is reloaded. The variable plus `resolver
+127.0.0.11 valid=10s` forces resolution per request. Verified by forcing the backend onto a new
+address, not merely by restarting it.
+
+**`/nginx-health` deliberately does not touch the backend.** It answers "is the proxy up"; the
+app's `/health` answers "is the app up". One curl each then tells you which layer failed. Merging
+them would make every backend restart look like a proxy outage.
 
 **Makefile shell flags go on `SHELL`, not `.SHELLFLAGS`.** GNU Make 3.81, which macOS ships,
 ignores `.SHELLFLAGS` silently — a Makefile using it looks strict while letting failed pipes pass.

@@ -5,9 +5,14 @@ services:
     build:
       context: .
     image: ${IMAGE:-tasks}:${TAG:-latest}
+    # A fixed name also makes `--scale api=2` fail outright. That is deliberate: the app stores
+    # state in one SQLite file and SQLite takes one writer, so two replicas is data corruption,
+    # not extra throughput. Removing this line requires solving storage first.
     container_name: tasks-api
-    ports:
-      - "${PORT:-8080}:8080"
+    # No published host port. The service is reachable only through nginx, on the compose
+    # network. `expose` is documentation — compose networking does not require it.
+    expose:
+      - "8080"
     environment:
       # Absolute path inside the container; the bind mount below puts it on the host at ./data.
       DATASOURCES_DEFAULT_URL: jdbc:sqlite:/data/tasks.db
@@ -24,3 +29,28 @@ services:
       start_period: 20s
     # Deliberately no `restart:` policy. This is a tool the user starts on purpose; it should
     # not come back to life on every Docker daemon start.
+
+  nginx:
+    # Pinned by digest, matching the decision made for the Temurin images.
+    #   nginx:alpine -> nginx 1.31.4 on Alpine 3.24 (resolved 2026-08-23)
+    # Re-resolve with: docker buildx imagetools inspect nginx:alpine
+    image: nginx:alpine@sha256:db35bfc6b2951e7f8a72db5db120288c127ffaeeb4a6d4b95a26fead017d5913
+    container_name: tasks-nginx
+    depends_on:
+      api:
+        # Without this nginx comes up first and the first requests 502 while the JVM boots.
+        condition: service_healthy
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      # Read-only, and a file in version control rather than baked into an image: editing it
+      # needs `make nginx-reload`, not a rebuild.
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      # Probes nginx's own endpoint, never the backend — a stopped api must not make the proxy
+      # look broken. curl is a real binary in this image (verified 2026-08-23, 8.21.0).
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/nginx-health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s

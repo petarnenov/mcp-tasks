@@ -18,8 +18,8 @@ GRADLE  := ./gradlew
 DB      := data/tasks.db
 
 .PHONY: help build test test-one run clean \
-        docker-build up down restart logs shell ps \
-        db-shell db-reset
+        docker-build up down restart logs logs-api logs-nginx ps shell \
+        nginx-reload db-shell db-reset
 
 # ---- Local -------------------------------------------------------------------
 
@@ -54,18 +54,29 @@ docker-build:  ## Build the container image
 
 up:  ## Start the service in Docker, building if needed
 	$(COMPOSE) up --build -d
-	@echo "-> http://localhost:$(PORT)/tasks   (make ps for health, make logs to follow)"
+	@echo "-> http://localhost:$(PORT)/tasks   (through nginx; make ps for health)"
 
 down:  ## Stop the service. Data in ./data survives
 	$(COMPOSE) down
 
 restart: down up  ## Stop then start
 
-logs:  ## Follow the service logs
+logs:  ## Follow logs from all services
+	$(COMPOSE) logs -f
+
+logs-api:  ## Follow the application logs only
 	$(COMPOSE) logs -f api
 
-shell:  ## Open a shell inside the running container
+logs-nginx:  ## Follow the nginx access and error logs only
+	$(COMPOSE) logs -f nginx
+
+shell:  ## Open a shell inside the running api container
 	$(COMPOSE) exec api /bin/bash
+
+nginx-reload:  ## Validate nginx.conf and reload it without restarting anything
+	$(COMPOSE) exec nginx nginx -t
+	$(COMPOSE) exec nginx nginx -s reload
+	@echo "nginx reloaded"
 
 ps:  ## Show container status and health
 	$(COMPOSE) ps

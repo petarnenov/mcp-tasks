@@ -23,11 +23,14 @@ use a system `gradle` (the local one is 9.4.1, and the Micronaut plugin 4.6.2 ta
 | Run (host) | `make run` | `./gradlew run` | Service on `:8080`, database at `data/tasks.db` |
 | Clean | `make clean` | `./gradlew clean` | Discards `build/`. Leaves the database alone |
 | Image | `make docker-build` | `docker build -t tasks:latest .` | Builds the container image (~354 MB) |
-| Run (Docker) | `make up` | `docker compose up --build -d` | Service on `:8080`, healthcheck reports readiness |
-| Stop | `make down` | `docker compose down` | Stops it. `./data` survives |
-| Status | `make ps` | `docker compose ps` | Container state **and health** |
-| Logs | `make logs` | `docker compose logs -f api` | Follows output |
-| Shell | `make shell` | `docker compose exec api /bin/bash` | Inside the running container |
+| Run (Docker) | `make up` | `docker compose up --build -d` | nginx on `:8080` in front of the api; both healthchecks green |
+| Stop | `make down` | `docker compose down` | Stops both. `./data` survives |
+| Status | `make ps` | `docker compose ps` | Container state **and health**, both services |
+| Logs (all) | `make logs` | `docker compose logs -f` | Both services, interleaved by time |
+| Logs (api) | `make logs-api` | `docker compose logs -f api` | Application only |
+| Logs (nginx) | `make logs-nginx` | `docker compose logs -f nginx` | Access log with upstream timing |
+| Reload proxy | `make nginx-reload` | `nginx -t && nginx -s reload` | Validates first; a broken config never reaches the running server |
+| Shell | `make shell` | `docker compose exec api /bin/bash` | Inside the running api container |
 | DB shell | `make db-shell` | `sqlite3 data/tasks.db` | Reads the database directly |
 | DB reset | `make db-reset` | `rm -f data/tasks.db*` | **Destructive.** Prompts first |
 
@@ -37,6 +40,10 @@ Overridable: `PORT=9000 make up`, `IMAGE=… TAG=… make docker-build`.
 annotation processors generate the repository implementation and bean definitions at that point. A
 compile failure *is* the typecheck failure — including Micronaut Data errors about entity mapping,
 which surface at compile time rather than at first query.
+
+**In Docker, `:8080` is nginx, not the application.** The api container publishes no host port —
+it is reachable only through the proxy. `make run` (no Docker) still binds the app directly, so
+that is the one path that bypasses nginx.
 
 **There is no runnable jar.** `java -jar build/libs/…` fails for both jars this project produces —
 see *No self-contained jar* in [ARCHITECTURE.md](ARCHITECTURE.md#decisions--constraints). Use
@@ -125,8 +132,9 @@ The most useful part of this file. Current, honest state:
 4. **The 400 responses for validation are Micronaut's defaults, not ours.** Tests assert the status
    code and that no stack trace leaks, but the body shape is whatever the framework produces and
    could change under a framework upgrade. Only the 404 body is ours (`ApiError`).
-5. **No coverage measurement.** The 22 tests map to 19 stated obligations; that is deliberate
-   coverage of the *spec*, not measured coverage of the *code*. Untested branches may exist.
+5. **No coverage measurement.** The 23 tests map to stated obligations in [[task-api]] and
+   [[docker-and-make]]; that is deliberate coverage of the *specs*, not measured coverage of the
+   *code*. Untested branches may exist.
 6. **No CI.** Every gate depends on a human running it locally.
 7. **Flyway's SQLite support is inside `flyway-core`** rather than a dedicated module, and it is
    community-tier. It works here, verified by `PersistenceTest`, but it is not the path Redgate
@@ -135,8 +143,14 @@ The most useful part of this file. Current, honest state:
    container writing to a bind-mounted host directory — passes on macOS only because Docker
    Desktop's file sharing remaps ownership. On Linux this can be `permission denied` on first
    write. Treat the container as unverified on Linux until someone runs `make up` there.
-9. **Nothing tests the Makefile or the Docker setup automatically.** Their obligations were checked
-   by hand once, on 2026-08-23. A change to `Dockerfile`, `compose.yaml` or `Makefile` has no
-   safety net beyond running it.
+9. **Nothing tests the Makefile, Docker or nginx automatically.** Those obligations were checked by
+   hand once, on 2026-08-23. A change to `Dockerfile`, `compose.yaml`, `nginx/nginx.conf` or
+   `Makefile` has no safety net beyond running it. The 23 JUnit tests talk to the application
+   directly and would stay green with the proxy completely broken.
 10. **No image scanning.** Base images are digest-pinned, which means CVE fixes require a
     deliberate edit and nothing currently tells you when one is due.
+11. **Nginx fronts one backend and cannot front more.** Not a bug — SQLite takes one writer. The
+    guard is `container_name: tasks-api`, which makes `--scale` fail. If anyone removes it, the
+    scaling refusal disappears silently and two writers hit one file. See [[nginx-load-balancer]].
+12. **Rate limiting is wired but effectively off** at `100r/s` / burst 200. The mechanism is
+    verified; the number is not tuned to anything real.
