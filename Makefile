@@ -20,9 +20,12 @@ MCP_PORT ?= 8877
 REPLICAS ?= 3
 COMPOSE ?= docker compose
 GRADLE  := ./gradlew
+# The MCP server is a Node/TypeScript project, not a Gradle module. `-C` keeps every recipe
+# runnable from the repository root without a cd that the next line would forget.
+NPM     := npm --prefix mcp-server
 DB      := data/tasks.db
 
-.PHONY: help build test test-one run clean \
+.PHONY: help build build-api build-mcp test test-api test-mcp test-one run clean install \
         run-mcp docker-build up down restart scale logs logs-api logs-mcp logs-nginx ps shell \
         nginx-reload db-shell db-reset
 
@@ -36,24 +39,42 @@ help:  ## Print this help
 	@echo ""
 	@echo "Overridable: IMAGE=$(IMAGE) MCP_IMAGE=$(MCP_IMAGE) TAG=$(TAG) PORT=$(PORT) MCP_PORT=$(MCP_PORT) REPLICAS=$(REPLICAS)"
 
-build:  ## Compile, run the tests, and assemble the jar
+build: build-api build-mcp  ## Build and test both services
+
+build-api:  ## Compile, run the tests, and assemble the task API jar
 	$(GRADLE) build
 
-test:  ## Run the full test suite
+build-mcp: install  ## Typecheck, test and compile the MCP server to mcp-server/dist
+	$(NPM) run build
+	$(NPM) test
+
+install:  ## Install the MCP server's dependencies from the lockfile
+	$(NPM) ci
+
+test: test-api test-mcp  ## Run both test suites
+
+test-api:  ## Run the task API tests (JUnit)
 	$(GRADLE) test
 
-test-one:  ## Run one test class or method: make test-one TEST='*TimestampsTest*'
+test-mcp: install  ## Run the MCP server tests (vitest)
+	$(NPM) test
+
+test-one:  ## Run one API test class or method: make test-one TEST='*TimestampsTest*'
 	@test -n "$(TEST)" || { echo "usage: make test-one TEST='*TimestampsTest*'"; exit 1; }
 	$(GRADLE) test --tests '$(TEST)'
 
 run:  ## Run the task API on the host, no Docker (http://localhost:8080)
 	$(GRADLE) :task-api:run
 
-run-mcp:  ## Run the MCP server on the host, no Docker (needs `make run` in another shell)
-	$(GRADLE) :mcp-server:run
+# Compiles first (the `dev` script is `tsc && node dist/index.js`). Node strips TypeScript types
+# but does not resolve a `.js` import specifier to the `.ts` file beside it, so running the
+# sources directly fails on the first relative import.
+run-mcp: install  ## Run the MCP server on the host, no Docker (needs `make run` in another shell)
+	TASKS_API_URL=$${TASKS_API_URL:-http://localhost:8080} $(NPM) run dev
 
-clean:  ## Remove build output. Does NOT touch the database
+clean:  ## Remove build output. Does NOT touch the database or node_modules
 	$(GRADLE) clean
+	rm -rf mcp-server/dist
 
 # ---- Docker ------------------------------------------------------------------
 

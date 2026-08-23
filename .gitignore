@@ -6,6 +6,10 @@ data/
 .gradle/
 build/
 
+# Node — the mcp-server module. dist/ is compiled output, rebuilt by `make build`.
+node_modules/
+mcp-server/dist/
+
 # IDE
 .idea/
 *.iml

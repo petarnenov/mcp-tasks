@@ -20,7 +20,6 @@ COPY gradlew ./
 COPY gradle ./gradle
 COPY settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY task-api/build.gradle.kts task-api/
-COPY mcp-server/build.gradle.kts mcp-server/
 RUN ./gradlew --no-daemon :task-api:dependencies --quiet > /dev/null
 
 COPY task-api/src task-api/src

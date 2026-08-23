@@ -5,8 +5,15 @@ checked against the working tree.
 
 ## What this system is
 
-Two services. A single-user task list with an HTTP interface, and an MCP server that exposes it
-as tools so a model can use it from a conversation.
+Two services, in **two languages**. A single-user task list with an HTTP interface, written in
+Java on Micronaut 5, and an MCP server that exposes it as tools so a model can use it from a
+conversation, written in TypeScript on Node.
+
+The split is not a preference. The MCP Java SDK tops out at the **2025-11-25** protocol revision
+and the current one is **2026-07-28**; TypeScript is where that revision exists. The full
+measurement is in [[mcp-server-typescript]] under *Why not Java*. The argument that made a second
+language acceptable applies to `mcp-server` and **not** to `task-api`: the MCP server is a
+stateless proxy with all its logic behind `TASKS_API_URL`, while the api owns the database.
 
 The task list: You create tasks, list them, read one, replace one,
 and delete one. Each task carries a title, optional free-text description, a workflow status, and a
@@ -35,10 +42,16 @@ Model Context Protocol. Do not infer scope from it.
 | Config | `src/main/resources/application.yml` | Datasource, port, Flyway |
 | Container | `Dockerfile`, `.dockerignore`, `compose.yaml` | Multi-stage image, digest-pinned bases, bind-mounted database |
 | Front door | `nginx/nginx.conf` | The only published ports, 8080 and 8877. Both backends publish nothing |
-| MCP server | `mcp-server/src/main/java/dev/petrov/tasks/mcp/` | Five `@Tool` methods over an HTTP client to the api. Holds no state |
+| MCP tools | `mcp-server/src/tools.ts` | The five tools, their descriptions and argument schemas, and the error translation |
+| MCP assembly | `mcp-server/src/server.ts` | The per-request `McpServer` factory. Exported as a factory on purpose — see Decisions |
+| MCP HTTP | `mcp-server/src/http.ts` | The two routes, `/mcp` and `/health`. Split from the entry point so tests can bind an ephemeral port |
+| MCP entry point | `mcp-server/src/index.ts` | Environment, `listen`, SIGTERM. Nothing else |
+| Task API client | `mcp-server/src/tasks-client.ts` | `fetch` over the api, plus the duplicated wire types. Returns a result union, never throws |
+| MCP container | `mcp-server/Dockerfile` | `node:24-alpine`, digest-pinned, multi-stage, non-root |
 | Entry point | `Makefile` | The documented way to run anything here. `make` lists the targets |
 
-Roughly 880 lines of Java including tests.
+Roughly 940 lines of Java (`task-api`) and 830 lines of TypeScript (`mcp-server`), both including
+tests.
 
 ## Flow
 
@@ -70,8 +83,12 @@ see Decisions.
 The asymmetry is the whole design. SQLite takes a single writer, so a second `api` replica is data
 corruption rather than throughput; `container_name: tasks-api` makes `--scale api=2` fail outright
 and is a **safety interlock, not cosmetics**. The MCP server holds nothing, so any replica can
-answer any request — `micronaut-mcp` runs it stateless, which is what removes the need for session
-affinity at the proxy.
+answer any request.
+
+That last property is structural rather than maintained. `createMcpHandler` takes a **factory** and
+builds one `McpServer` per request, so there is no instance that could accumulate state between
+requests. The 2026-07-28 revision is sessionless by design, which is why no `Mcp-Session-Id`
+affinity is needed at the proxy.
 
 **Scaling the MCP layer does not raise the ceiling.** More replicas accept more concurrent tool
 calls, and they all funnel into one api with `maximum-pool-size: 1`. The bottleneck moves; it does
@@ -91,8 +108,12 @@ not disappear.
 - **`Timestamps` is the only place that reads the clock.** No `Instant.now()` anywhere else; that
   is what keeps the format consistent and the monotonicity guarantee real.
 - **The MCP server talks to the api over HTTP like any other client.** It does not share code,
-  a database connection, or DTO classes with it. The wire types in `mcp-server` are deliberate
-  duplicates: a shared module would let a change on one side silently bind the other.
+  a database connection, or DTO classes with it — it cannot, being in another language, and the
+  wire types in `mcp-server/src/tasks-client.ts` are deliberate duplicates. The boundary that used
+  to be a convention is now enforced by the toolchain.
+- **The MCP server has no persistence and must not gain any.** Everything it knows comes back from
+  `TASKS_API_URL`. A cache, a session store or a local file would each individually break the
+  replica model.
 - **In Docker, nothing reaches either application except through nginx.** The `api` service publishes
   no host port; `${PORT:-8080}` belongs to nginx. `make run` (no Docker) still binds the app
   directly — that is the one path that bypasses the proxy, and it is a development convenience.
@@ -134,7 +155,10 @@ Environment variables, none of them required — all have working defaults in `a
 | `DATASOURCES_DEFAULT_URL` | Overrides the SQLite JDBC URL | `compose.yaml` sets it to `jdbc:sqlite:/data/tasks.db` |
 | `MICRONAUT_SERVER_PORT` | Overrides the listen port | available, not currently used |
 | `PORT` | Host-side published port — **nginx's**, not the app's | `Makefile` / `compose.yaml`, defaults to 8080 |
-| `IMAGE`, `TAG` | Image name and tag | `Makefile`, default `tasks:latest` |
+| `MCP_PORT` | Host-side published MCP port — nginx's | `Makefile` / `compose.yaml`, defaults to 8877 |
+| `IMAGE`, `TAG`, `MCP_IMAGE` | Image names and tag | `Makefile`, default `tasks:latest` / `tasks-mcp:latest` |
+| `TASKS_API_URL` | Where the MCP server finds the api | `compose.yaml` sets `http://api:8080`; defaults to `http://localhost:8080` for `make run-mcp` |
+| `REPLICAS` | MCP replica count | `Makefile`, defaults to 3 |
 
 ## Decisions & constraints
 
@@ -222,6 +246,43 @@ address, not merely by restarting it.
 **`/nginx-health` deliberately does not touch the backend.** It answers "is the proxy up"; the
 app's `/health` answers "is the app up". One curl each then tells you which layer failed. Merging
 them would make every backend restart look like a proxy outage.
+
+**The MCP server is TypeScript because of a protocol version, not a preference.** The MCP Java SDK
+(`io.modelcontextprotocol.sdk:mcp-core` 2.0.1, the latest release) implements up to **2025-11-25**;
+the current spec revision is **2026-07-28**. `@modelcontextprotocol/server` 2.0.0 implements it.
+The evidence is in [[mcp-server-typescript]] — do not reopen this from memory, the version table
+there was built by unzipping the artifacts. **This does not license a second language elsewhere:**
+`mcp-server` was a stateless proxy behind one environment variable. `task-api` owns the database.
+
+**`createMcpHandler` is given a factory, and `server.ts` exports one.** One `McpServer` is built per
+request and discarded. Returning a singleton would work in a single replica and quietly break the
+scaling model, since state could then survive between requests. The factory shape is what makes
+"any replica can answer any request" a consequence rather than a promise.
+
+**`TasksClient` returns a result union instead of throwing.** `ApiResult<T>` is
+`{ok:true,value}` | `{ok:false,kind:'status',status}` | `{ok:false,kind:'unreachable',detail}`. A 404
+is a normal outcome of `tasks_get`, not an exception. The Java version treated it as one and had a
+bug where a missing task came back as a cheerful success with a body of `"null"`; here the compiler
+refuses to let a caller skip the failure arm.
+
+**Every tool returns `isError: true` rather than throwing.** A thrown error reaches the model as an
+opaque `-32603` with the message stripped — measured on the Java implementation, and the reason
+that spec's first implementation note exists. JSON-RPC errors are for malformed requests; a tool
+that ran and could not do the job hands the model text it can act on.
+
+**The MCP container's healthcheck is `node -e "fetch(...)"`, not `curl`.** `node:24-alpine` ships no
+curl, and installing one to make a request the runtime can already make would be a package added for
+nothing. This is the same reasoning that made the *api* image install curl — a JRE cannot make an
+HTTP request from the command line, and a Node runtime can.
+
+**`ENTRYPOINT ["node", "dist/index.js"]`, never `npm start`.** npm as PID 1 does not forward
+SIGTERM, so `make down` and every scale-down would wait out the kill timeout. `index.ts` installs
+its own SIGTERM/SIGINT handler for the same reason.
+
+**No `Host` or `Origin` guard on the MCP endpoint.** The SDK ships `localhostHostValidation()` and
+`localhostOriginValidation()` for servers bound to loopback on a developer's machine. nginx rewrites
+`Host`, so either would reject every proxied request. The omission is deliberate; the endpoint's
+posture is unchanged from the Java server, which is to say there is none.
 
 **Makefile shell flags go on `SHELL`, not `.SHELLFLAGS`.** GNU Make 3.81, which macOS ships,
 ignores `.SHELLFLAGS` silently — a Makefile using it looks strict while letting failed pipes pass.

@@ -7,4 +7,6 @@ plugins {
 
 rootProject.name = "tasks"
 
-include("task-api", "mcp-server")
+// One Gradle module. The MCP server is a Node/TypeScript project under mcp-server/ and is built
+// by npm, not Gradle -- see vault/specs/mcp-server-typescript.md. `make build` runs both.
+include("task-api")

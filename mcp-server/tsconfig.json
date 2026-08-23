@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    // NodeNext, not Bundler: this is a plain Node process, not a bundled app. It is also what
+    // makes the SDK's dual .d.mts/.d.cts exports resolve to the ESM face, which is the one the
+    // v2 packages document.
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2023",
+    "lib": ["es2023"],
+
+    // TypeScript 6 stopped auto-including @types/*, and the SDK's published .d.mts references
+    // Buffer. Stating this now means the TS 6 upgrade is not a surprise.
+    "types": ["node"],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+
+    "rootDir": "src",
+    "outDir": "dist",
+    "sourceMap": true,
+    "declaration": false
+  },
+  "include": ["src/**/*.ts"]
+}

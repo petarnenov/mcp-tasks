@@ -1,8 +1,18 @@
-# MCP server
+# MCP server (Java)
 
-**Status:** shipped
+**Status:** superseded by [[mcp-server-typescript]]
 **Owner:** petarnenovpetrov@gmail.com
 **Updated:** 2026-08-23
+
+> **Superseded 2026-08-23** by [[mcp-server-typescript]], which reimplements this server in
+> TypeScript. The reason is a protocol version and nothing else: the MCP Java SDK tops out at the
+> **2025-11-25** revision and the current spec is **2026-07-28**. See that spec's *Why not Java*
+> for the measurements.
+>
+> **This file is kept, not deleted.** Everything it argues still holds — the tool names, the two
+> tool descriptions that must not be trimmed, the two entrances, the nginx and compose wiring, and
+> the scaling argument. The successor inherits all of it and does not repeat the reasoning. The
+> Java code it describes is gone; the design it describes is live.
 
 > **Shipped 2026-08-23**, on top of [[micronaut-5-migration]]. All 23 obligations verified.
 > Three things the implementation forced are in [Implementation notes](#implementation-notes).
