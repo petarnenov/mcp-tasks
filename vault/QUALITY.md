@@ -17,8 +17,8 @@ Everything runs from the repository root. **There are three modules and two tool
 
 The Gradle wrapper is pinned to **Gradle 9.7.1** and the daemon to **Java 25**
 (`gradle/gradle-daemon-jvm.properties`). Do not use a system `gradle` — it may run on the wrong JVM,
-and the Micronaut plugin 5.x refuses anything below JVM 25. The MCP server needs **Node 20 or
-newer** (`engines` in `package.json`); the container is pinned to Node 24 LTS.
+and the Micronaut plugin 5.x refuses anything below JVM 25. Both TypeScript modules need **Node 24 or
+newer** (`engines` in both `package.json` files); the container is pinned to Node 24 LTS.
 
 | Gate | Make target | Underneath | Proves |
 |---|---|---|---|
