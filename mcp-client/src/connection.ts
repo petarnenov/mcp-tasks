@@ -7,6 +7,8 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 
 import { describeRequest, MessageLog } from './log.js';
+import { loadPrompts, type PromptModel } from './prompts.js';
+import { loadResources, type ResourcesModel } from './resources.js';
 
 /** The revision this client prefers, and the one it reports having failed to get. */
 export const MODERN_PROTOCOL_VERSION = '2026-07-28';
@@ -67,6 +69,25 @@ export interface Connected {
 export interface ConnectionHandlers {
     /** Called whenever the tool list changes, including the first load. */
     onTools: (tools: Tool[]) => void;
+    /**
+     * Called once after connecting, with what the server offers to read.
+     *
+     * There is no list-change counterpart: this server declares `resources.listChanged: false`
+     * because it builds one instance per request and has nothing to notify from. A client that
+     * subscribed anyway would hold a stream open for refreshes that cannot arrive.
+     *
+     * `error` is set when the listing itself failed. It belongs in the panel rather than in the
+     * status badge: the connection is up and the tools are callable, and reddening the badge for
+     * this would misreport the state of everything else on the page.
+     */
+    onResources: (resources: ResourcesModel, error?: string) => void;
+    /**
+     * Called once after connecting, with the prompts the server offers.
+     *
+     * Same shape as `onResources`, and for the same reasons — including `error`, which belongs in
+     * the panel rather than in the status badge.
+     */
+    onPrompts: (prompts: PromptModel[], error?: string) => void;
     /** Called when the connection is established, with what was actually negotiated. */
     onConnected: (connected: Connected) => void;
     onError: (message: string) => void;
@@ -135,6 +156,14 @@ export class Connection {
 
         const { tools } = await client.listTools();
         this.#handlers.onTools(tools as Tool[]);
+
+        // The capability checks and the failure handling live in `resources.ts` and `prompts.ts`
+        // -- pure, and so testable without a browser or a server. A listing failure comes back as
+        // `error` rather than through `onError`: it goes to its own panel, not to the status
+        // badge, because the connection is up and every tool is still callable.
+        const [resources, prompts] = await Promise.all([loadResources(client), loadPrompts(client)]);
+        this.#handlers.onResources(resources.model, resources.error);
+        this.#handlers.onPrompts(prompts.prompts, prompts.error);
     }
 
     /**

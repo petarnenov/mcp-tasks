@@ -66,6 +66,8 @@ one replaceable container, not a subsystem. The same argument would **not** just
 **Non-goals:**
 - Changing the task API, nginx routing, the ports, or the replica model. All unchanged.
 - MCP prompts, resources, subscriptions, elicitation, or sampling. Tools only, as before.
+  **Revised 2026-08-24:** all three primitives now ship — two resources ([[mcp-resources]]) and
+  two prompts ([[mcp-prompts]]). Subscriptions, elicitation and sampling remain out.
 - stdio transport.
 - Authentication. It still inherits the api's posture, which is none.
 - Rewriting `task-api`. It stays Micronaut 5 / Java 25.

@@ -45,16 +45,18 @@ Model Context Protocol. Do not infer scope from it.
 | Container | `Dockerfile`, `.dockerignore`, `compose.yaml` | Multi-stage image, digest-pinned bases, bind-mounted database |
 | Front door | `nginx/nginx.conf` | The only published ports, 8080 and 8877. Both backends publish nothing |
 | MCP tools | `mcp-server/src/tools.ts` | The five tools, their descriptions and argument schemas, and the error translation |
-| MCP assembly | `mcp-server/src/server.ts` | The per-request `McpServer` factory. Exported as a factory on purpose — see Decisions |
+| MCP resources | `mcp-server/src/resources.ts` | `tasks://tasks` and `tasks://tasks/{id}`, read-only, plus id completion. Throws where `tools.ts` never does — see [[mcp-resources]] |
+| MCP prompts | `mcp-server/src/prompts.ts` | `triage_tasks` and `plan_task`, each embedding the resource it talks about. Throws too, but never `ResourceNotFoundError` — see [[mcp-prompts]] |
+| MCP assembly | `mcp-server/src/server.ts` | The per-request `McpServer` factory, and the declared capabilities. Exported as a factory on purpose — see Decisions |
 | MCP HTTP | `mcp-server/src/http.ts` | The two routes, `/mcp` and `/health`. Split from the entry point so tests can bind an ephemeral port |
 | MCP entry point | `mcp-server/src/index.ts` | Environment, `listen`, SIGTERM. Nothing else |
 | Task API client | `mcp-server/src/tasks-client.ts` | `fetch` over the api, plus the duplicated wire types. Returns a result union, never throws |
 | MCP container | `mcp-server/Dockerfile` | `node:24-alpine`, digest-pinned, multi-stage, non-root |
 | Client page | `mcp-client/src/main.ts` | DOM wiring. The only file in that module allowed to touch `document` |
-| Client logic | `mcp-client/src/{connection,schema-form,log}.ts` | Negotiation and era reporting, JSON Schema to form model, the message log. No DOM, so all three are unit-tested |
+| Client logic | `mcp-client/src/{connection,schema-form,resources,prompts,log}.ts` | Negotiation and era reporting, JSON Schema to form model, the resource and prompt models with their error handling, the message log. No DOM, so all five are unit-tested |
 | Entry point | `Makefile` | The documented way to run anything here. `make` lists the targets |
 
-Roughly 940 lines of Java (`task-api`) and 1,840 lines of TypeScript (`mcp-server` plus
+Roughly 940 lines of Java (`task-api`) and 4,080 lines of TypeScript (`mcp-server` plus
 `mcp-client`), all including tests.
 
 ## Flow

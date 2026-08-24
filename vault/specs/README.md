@@ -9,6 +9,8 @@ before implementing it; update it when scope changes.
 
 | Spec | Status | Summary |
 |---|---|---|
+| [mcp-prompts](mcp-prompts.md) | shipped | The third primitive: `triage_tasks` and `plan_task`, each embedding the resource it talks about, plus a prompts panel in the browser client. Verified 2026-08-24, 21 obligations. |
+| [mcp-resources](mcp-resources.md) | shipped | Two MCP resources — `tasks://tasks` and the `tasks://tasks/{id}` template with id completion — plus a resources panel in the browser client. Verified 2026-08-24, 20 obligations. |
 | [mcp-client](mcp-client.md) | shipped | A browser MCP client served at `:8080/mcp/client`, negotiating 2026-07-28 with a loud downgrade. Tool list, generated forms, message log. No LLM. Verified 2026-08-23, 16 obligations. |
 | [mcp-server-typescript](mcp-server-typescript.md) | shipped | The MCP server rewritten in TypeScript on SDK 2.0.0, serving the **2026-07-28** protocol revision. Same five tools, same ports, same 3 replicas. Verified 2026-08-23, 20 obligations. |
 | [mcp-server](mcp-server.md) | superseded by [[mcp-server-typescript]] | The Java implementation. Its design still governs; only the language and SDK changed. Verified 2026-08-23, 22 of 23 obligations. |

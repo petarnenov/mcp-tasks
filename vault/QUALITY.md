@@ -25,13 +25,13 @@ newer** (`engines` in `package.json`); the container is pinned to Node 24 LTS.
 | Help | `make` | — | Lists every target. Builds nothing |
 | Build | `make build` | `build-api` + `build-mcp` | Both services compiled and tested |
 | Build (api) | `make build-api` | `./gradlew build` | Compiles, runs annotation processors, runs the 23 api tests, assembles |
-| Build (mcp) | `make build-mcp` | `npm ci && npm run build && npm test` | Typechecks, compiles to `mcp-server/dist`, runs the 13 mcp tests |
-| Build (client) | `make build-client` | `npm ci && tsc && esbuild && npm test` | Typechecks, bundles to `mcp-client/dist`, runs the 26 client tests |
+| Build (mcp) | `make build-mcp` | `npm ci && npm run build && npm test` | Typechecks, compiles to `mcp-server/dist`, runs the 40 mcp tests |
+| Build (client) | `make build-client` | `npm ci && tsc && esbuild && npm test` | Typechecks, bundles to `mcp-client/dist`, runs the 50 client tests |
 | Install | `make install` | `npm --prefix mcp-server ci` | Installs exactly what `package-lock.json` pins |
-| Test (all) | `make test` | `test-api` + `test-mcp` + `test-client` | All **62** tests pass (23 api + 13 mcp + 26 client) |
+| Test (all) | `make test` | `test-api` + `test-mcp` + `test-client` | All **113** tests pass (23 api + 40 mcp + 50 client) |
 | Test (api) | `make test-api` | `./gradlew test` | The 23 JUnit tests |
-| Test (mcp) | `make test-mcp` | `npm --prefix mcp-server test` | The 13 vitest tests |
-| Test (client) | `make test-client` | `npm --prefix mcp-client test` | The 26 vitest tests |
+| Test (mcp) | `make test-mcp` | `npm --prefix mcp-server test` | The 40 vitest tests |
+| Test (client) | `make test-client` | `npm --prefix mcp-client test` | The 50 vitest tests |
 | Test (one) | `make test-one TEST='*TimestampsTest*'` | `./gradlew test --tests …` | One **api** class or method. There is no mcp equivalent; use `npx vitest -t '…'` |
 | Run (host) | `make run` | `./gradlew :task-api:run` | Task API on `:8080`, database at `data/tasks.db` |
 | Run MCP (host) | `make run-mcp` | `npm --prefix mcp-server run dev` | Compiles, then MCP server on `:8877`; needs `make run` in another shell |
@@ -104,20 +104,29 @@ src/test/java/dev/petrov/tasks/
 
 mcp-server/test/
   mcp-server.test.ts        mcp-server-typescript obligations 1-12, over real HTTP
+  resources.test.ts         mcp-resources obligations 1-13, over real HTTP
+  prompts.test.ts           mcp-prompts obligations 1-13 (and 7b), over real HTTP
   stub-tasks-api.ts         a stand-in task API on its own HTTP server
 
 mcp-client/test/
   schema-form.test.ts       mcp-client obligations 5-7, against the server's real schemas
   log.test.ts               mcp-client obligations 9-11
+  resources.test.ts         mcp-resources obligations 14-17
+  prompts.test.ts           mcp-prompts obligations 14-17
 ```
 
-**62 tests total** — 23 for the api (JUnit), 13 for the MCP server and 26 for the client (vitest).
+**113 tests total** — 23 for the api (JUnit), 40 for the MCP server and 50 for the client (vitest).
 
 **Naming.** Each test in `TaskControllerTest` carries a `@DisplayName` starting with the number of
 the correctness obligation it proves in [`specs/task-api.md`](specs/task-api.md), and each test in
 `mcp-server.test.ts` starts its name with the obligation number from
 [`specs/mcp-server-typescript.md`](specs/mcp-server-typescript.md). That mapping is the point: a
 failing test names the obligation that broke. Keep it when adding tests.
+
+**One spec per test file, for that reason.** `resources.test.ts` in both modules numbers into
+[`specs/mcp-resources.md`](specs/mcp-resources.md), and it is a separate file rather than more
+tests in `mcp-server.test.ts` precisely so the numbers stay unambiguous. A new spec gets a new
+file.
 
 **The MCP tests drive a real MCP client.** `mcp-server.test.ts` connects with the SDK's own
 `Client` over `StreamableHTTPClientTransport`, once pinned to the modern 2026-07-28 era and once on
@@ -207,7 +216,9 @@ The most useful part of this file. Current, honest state:
 10. **The MCP deployment obligations are still manual.** Obligations 13-20 of
     [[mcp-server-typescript]] — replica spread, failover, port override, both entrances, the
     Inspector — were checked by hand on 2026-08-23 and have no automated coverage. Obligations 1-12
-    are the ones the 13 vitest tests carry.
+    are the ones the vitest tests carry. Same shape for [[mcp-resources]]: its obligations 1-17 are
+    automated, 18-20 (both entrances, the browser client, the Inspector) were checked by hand on
+    2026-08-24, and [[mcp-prompts]] repeats the split exactly.
 11. **Nothing tests nginx's `/mcp` route on 8080 automatically.** Two entrances to one backend
     means two paths to keep in step, and only one of them is covered by a checked-in test.
 12. **No image scanning.** Base images are digest-pinned, which means CVE fixes require a

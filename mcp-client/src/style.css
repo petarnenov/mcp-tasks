@@ -68,20 +68,42 @@ h2 { font-size: 0.8rem; margin: 0 0 0.75rem; text-transform: uppercase; letter-s
 main {
     display: grid;
     grid-template-columns: minmax(200px, 1fr) minmax(320px, 2fr);
-    grid-template-areas: "tools call" "log log";
+    grid-template-areas: "tools call" "resources resources" "prompts prompts" "log log";
     gap: 1px;
     background: var(--border);
     min-height: calc(100vh - 53px);
 }
 
 @media (max-width: 800px) {
-    main { grid-template-columns: 1fr; grid-template-areas: "tools" "call" "log"; }
+    main { grid-template-columns: 1fr; grid-template-areas: "tools" "call" "resources" "prompts" "log"; }
 }
 
 .panel { background: var(--bg); padding: 1rem 1.25rem; overflow-x: auto; }
-#tools-panel { grid-area: tools; }
-#call-panel  { grid-area: call; }
-#log-panel   { grid-area: log; }
+#tools-panel     { grid-area: tools; }
+#call-panel      { grid-area: call; }
+#resources-panel { grid-area: resources; }
+#prompts-panel   { grid-area: prompts; }
+#log-panel       { grid-area: log; }
+
+/* The resource list is the tool list's layout with URIs in it, so it reuses .tool-list. A URI is
+   longer than a tool name and must not be clipped: wrap rather than overflow the panel. */
+#resource-list button { white-space: normal; word-break: break-all; }
+#resource-list .kind { color: var(--muted); font-family: inherit; font-size: 0.85em; margin-left: 0.4rem; }
+/* Three states, not the .result element's two: a resource that is absent is the server working
+   correctly, and colouring it like a failure would say the client broke. */
+#resource-body[data-error="not-found"] { border-left-color: var(--warn); }
+#resource-body[data-error="failed"]    { border-left-color: var(--error); }
+
+/* Prompt messages. Each block keeps its role and, for an embedded resource, the URI it came from --
+   the whole point of showing them is seeing exactly what the server sent. */
+#prompt-list button { white-space: normal; }
+#prompt-list .kind { color: var(--muted); font-family: inherit; font-size: 0.85em; margin-left: 0.4rem; }
+.block { margin-top: 0.9rem; }
+.block .who { font-family: var(--mono); font-size: 0.78em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.block .who .uri { text-transform: none; letter-spacing: 0; color: var(--accent); margin-left: 0.5rem; }
+.block .body { margin: 0.2rem 0 0; }
+.block[data-kind="resource"] .body { border-left-color: var(--accent); }
+.block[data-kind="unknown"] .body { border-left-color: var(--warn); }
 
 .tool-list, .log-list { list-style: none; margin: 0; padding: 0; }
 

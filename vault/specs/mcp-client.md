@@ -47,7 +47,8 @@ results, a page served next to the server itself is a better answer than a gener
   resources, prompts and a protocol-era switch. This has a tool list and a form. `make
   run-mcp-inspector` stays.
 - MCP resources, prompts, subscriptions, sampling, elicitation. Tools only, matching what the
-  server offers.
+  server offers. **Revised 2026-08-24:** a resources panel shipped with [[mcp-resources]],
+  alongside the two resources the server grew there. The rest remain out.
 - Authentication. Same posture as everything else here: none.
 - Changing `task-api`, `mcp-server`, or the tools themselves.
 

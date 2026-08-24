@@ -11,6 +11,21 @@
 
 import { Connection, describe, MODERN_PROTOCOL_VERSION, type Tool } from './connection.js';
 import { MessageLog } from './log.js';
+import {
+    buildPromptArguments,
+    toRenderedBlocks,
+    type PromptModel,
+    type RenderedBlock,
+} from './prompts.js';
+import {
+    classifyReadFailure,
+    contentsToText,
+    expandTemplate,
+    NO_RESOURCES,
+    type ResourcesModel,
+    type StaticResourceModel,
+    type TemplateResourceModel,
+} from './resources.js';
 import { buildArguments, toFormModel, type FieldModel, type FormValues, type JsonSchema } from './schema-form.js';
 
 const el = <T extends HTMLElement>(id: string): T => {
@@ -31,10 +46,32 @@ const fieldsEl = el('fields');
 const callButton = el<HTMLButtonElement>('call-button');
 const resultEl = el<HTMLPreElement>('result');
 const logList = el<HTMLUListElement>('log-list');
+const resourcesNote = el('resources-note');
+const resourceList = el<HTMLUListElement>('resource-list');
+const resourceForm = el<HTMLFormElement>('resource-form');
+const resourceFields = el('resource-fields');
+const resourceButton = el<HTMLButtonElement>('resource-button');
+const resourceBody = el<HTMLPreElement>('resource-body');
+const promptsNote = el('prompts-note');
+const promptList = el<HTMLUListElement>('prompt-list');
+const promptForm = el<HTMLFormElement>('prompt-form');
+const promptFields = el('prompt-fields');
+const promptButton = el<HTMLButtonElement>('prompt-button');
+const promptMessages = el('prompt-messages');
 
 let tools: Tool[] = [];
 let selected: Tool | undefined;
 let fields: FieldModel[] = [];
+let resources: ResourcesModel = NO_RESOURCES;
+/** False until the server has answered. "No resources" and "not asked yet" must not look alike. */
+let resourcesLoaded = false;
+let prompts: PromptModel[] = [];
+let promptsLoaded = false;
+let selectedPrompt: PromptModel | undefined;
+/** What the Read button will read: a fixed URI, or a template whose variables need filling in. */
+let selectedResource: { kind: 'static'; resource: StaticResourceModel }
+    | { kind: 'template'; template: TemplateResourceModel }
+    | undefined;
 
 const log = new MessageLog(renderLog);
 const connection = new Connection(log, {
@@ -51,6 +88,16 @@ const connection = new Connection(log, {
                 select(still);
             }
         }
+    },
+    onResources: (next, error) => {
+        resources = next;
+        resourcesLoaded = true;
+        renderResources(error);
+    },
+    onPrompts: (next, error) => {
+        prompts = next;
+        promptsLoaded = true;
+        renderPrompts(error);
     },
     onConnected: (connected) => {
         // Negotiation is 'auto', so a legacy server still connects. Saying so is the whole point:
@@ -252,6 +299,420 @@ async function call(name: string, args: Record<string, unknown>): Promise<void> 
     }
 }
 
+/* ---- resources ---------------------------------------------------------------------------- */
+
+function renderResources(error?: string): void {
+    if (error !== undefined) {
+        showNote(error);
+    } else if (!resourcesLoaded) {
+        showNote('waiting for the connection…');
+    } else if (resources.resources.length === 0 && resources.templates.length === 0) {
+        showNote('This server exposes no resources.');
+    } else {
+        resourcesNote.hidden = true;
+    }
+
+    resourceList.replaceChildren();
+    for (const resource of resources.resources) {
+        resourceList.append(
+            resourceEntry(resource.name, resource.uri, resource.description, () =>
+                selectResource({ kind: 'static', resource }),
+            ),
+        );
+    }
+    for (const template of resources.templates) {
+        resourceList.append(
+            resourceEntry(template.name, template.uriTemplate, template.description, () =>
+                selectResource({ kind: 'template', template }),
+            ),
+        );
+    }
+}
+
+function showNote(text: string): void {
+    resourcesNote.textContent = text;
+    resourcesNote.hidden = false;
+}
+
+function resourceEntry(name: string, uri: string, description: string, onSelect: () => void): HTMLLIElement {
+    const item = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('aria-pressed', String(uri === selectedUri()));
+    // textContent throughout: names, URIs and descriptions all come off the wire.
+    button.textContent = uri;
+
+    const kind = document.createElement('span');
+    kind.className = 'kind';
+    kind.textContent = description === '' ? name : `${name} — ${description}`;
+    button.append(kind);
+
+    button.addEventListener('click', onSelect);
+    item.append(button);
+    return item;
+}
+
+function selectedUri(): string | undefined {
+    if (selectedResource === undefined) {
+        return undefined;
+    }
+    return selectedResource.kind === 'static'
+        ? selectedResource.resource.uri
+        : selectedResource.template.uriTemplate;
+}
+
+function selectResource(next: NonNullable<typeof selectedResource>): void {
+    selectedResource = next;
+    resourceBody.hidden = true;
+    resourceFields.replaceChildren();
+
+    if (next.kind === 'static') {
+        // Nothing to fill in, so nothing to submit: reading is the click itself.
+        resourceForm.hidden = true;
+        renderResources();
+        void readResource(next.resource.uri);
+        return;
+    }
+
+    for (const variable of next.template.variables) {
+        resourceFields.append(renderVariable(next.template, variable));
+    }
+    resourceForm.hidden = false;
+    renderResources();
+}
+
+/**
+ * One input per template variable, with a datalist the server fills in.
+ *
+ * The suggestions come from `completion/complete`, which is the server's job and not a guess made
+ * here — it is also why this input is not simply a text box: task ids are UUIDs, and typing one
+ * from memory is not a thing anyone does.
+ */
+function renderVariable(template: TemplateResourceModel, variable: string): HTMLLabelElement {
+    const label = document.createElement('label');
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = variable;
+    label.append(name);
+
+    const mark = document.createElement('span');
+    mark.className = 'req';
+    mark.textContent = ' *';
+    label.append(mark);
+
+    const hint = document.createElement('span');
+    hint.className = 'hint';
+    hint.textContent = template.uriTemplate;
+    label.append(hint);
+
+    const listId = `complete-${variable}`;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = variable;
+    input.autocomplete = 'off';
+    input.setAttribute('list', listId);
+
+    const datalist = document.createElement('datalist');
+    datalist.id = listId;
+
+    input.addEventListener('input', () => {
+        void complete(template.uriTemplate, variable, input.value, datalist);
+    });
+
+    label.append(input, datalist);
+    return label;
+}
+
+async function complete(
+    uriTemplate: string,
+    variable: string,
+    value: string,
+    into: HTMLDataListElement,
+): Promise<void> {
+    const client = connection.client;
+    if (client === undefined) {
+        return;
+    }
+    try {
+        const result = await client.complete({
+            ref: { type: 'ref/resource', uri: uriTemplate },
+            argument: { name: variable, value },
+        });
+        into.replaceChildren(
+            ...result.completion.values.map((suggestion) => {
+                const option = document.createElement('option');
+                option.value = suggestion;
+                return option;
+            }),
+        );
+    } catch {
+        // Suggestions are a convenience. A server that cannot produce them — or does not implement
+        // completion at all — must not turn typing into an error message per keystroke.
+        into.replaceChildren();
+    }
+}
+
+resourceForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (selectedResource?.kind !== 'template') {
+        return;
+    }
+
+    const values: Record<string, string> = {};
+    for (const variable of selectedResource.template.variables) {
+        const control = resourceForm.elements.namedItem(variable);
+        values[variable] = control instanceof HTMLInputElement ? control.value : '';
+    }
+
+    const expanded = expandTemplate(selectedResource.template.uriTemplate, values);
+    if (!expanded.ok) {
+        showResourceBody(`Fill in: ${expanded.missing.join(', ')}. Nothing was read.`, 'failed');
+        return;
+    }
+    void readResource(expanded.uri);
+});
+
+async function readResource(uri: string): Promise<void> {
+    const client = connection.client;
+    if (client === undefined) {
+        showResourceBody('Not connected.', 'failed');
+        return;
+    }
+
+    resourceButton.disabled = true;
+    showResourceBody(`reading ${uri}…`);
+    try {
+        // 'bypass': this is a debugging tool, and a cached read would show what the server said
+        // earlier rather than what it says now. The server sets no cache hint, so nothing is held
+        // today — this makes the panel independent of that staying true.
+        const result = await client.readResource({ uri }, { cacheMode: 'bypass' });
+        showResourceBody(contentsToText(result.contents));
+    } catch (error) {
+        const failure = classifyReadFailure(error, uri);
+        // A miss is the server working correctly. It reads as an absent resource, and the
+        // connection badge stays exactly as green as it was.
+        showResourceBody(
+            failure.kind === 'not-found' ? `No resource at ${failure.uri}.` : failure.message,
+            failure.kind,
+        );
+    } finally {
+        resourceButton.disabled = false;
+    }
+}
+
+function showResourceBody(text: string, state?: 'not-found' | 'failed'): void {
+    resourceBody.textContent = text;
+    resourceBody.dataset['error'] = state ?? 'false';
+    resourceBody.hidden = false;
+}
+
+/* ---- prompts ------------------------------------------------------------------------------ */
+
+function renderPrompts(error?: string): void {
+    if (error !== undefined) {
+        showPromptNote(error);
+    } else if (!promptsLoaded) {
+        showPromptNote('waiting for the connection…');
+    } else if (prompts.length === 0) {
+        showPromptNote('This server exposes no prompts.');
+    } else {
+        promptsNote.hidden = true;
+    }
+
+    promptList.replaceChildren();
+    for (const prompt of prompts) {
+        const item = document.createElement('li');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.setAttribute('aria-pressed', String(prompt.name === selectedPrompt?.name));
+        button.textContent = prompt.name;
+
+        const kind = document.createElement('span');
+        kind.className = 'kind';
+        kind.textContent = prompt.description;
+        button.append(kind);
+
+        button.addEventListener('click', () => selectPrompt(prompt));
+        item.append(button);
+        promptList.append(item);
+    }
+}
+
+function showPromptNote(text: string): void {
+    promptsNote.textContent = text;
+    promptsNote.hidden = false;
+}
+
+function selectPrompt(prompt: PromptModel): void {
+    selectedPrompt = prompt;
+    promptMessages.hidden = true;
+    promptFields.replaceChildren();
+    for (const argument of prompt.args) {
+        promptFields.append(renderPromptArgument(prompt, argument));
+    }
+    promptForm.hidden = false;
+    renderPrompts();
+}
+
+/**
+ * One text box per argument. Not a simplification — `prompts/list` carries a name, a description
+ * and a required flag and nothing else, so there is no type to render a better control from.
+ */
+function renderPromptArgument(
+    prompt: PromptModel,
+    argument: PromptModel['args'][number],
+): HTMLLabelElement {
+    const label = document.createElement('label');
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = argument.name;
+    label.append(name);
+
+    if (argument.required) {
+        const mark = document.createElement('span');
+        mark.className = 'req';
+        mark.textContent = ' *';
+        label.append(mark);
+    }
+
+    const hint = document.createElement('span');
+    hint.className = 'hint';
+    hint.textContent = argument.description;
+    label.append(hint);
+
+    const listId = `complete-prompt-${prompt.name}-${argument.name}`;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = argument.name;
+    input.autocomplete = 'off';
+    input.setAttribute('list', listId);
+
+    const datalist = document.createElement('datalist');
+    datalist.id = listId;
+
+    input.addEventListener('input', () => {
+        void completePromptArgument(prompt.name, argument.name, input.value, datalist);
+    });
+
+    label.append(input, datalist);
+    return label;
+}
+
+async function completePromptArgument(
+    promptName: string,
+    argument: string,
+    value: string,
+    into: HTMLDataListElement,
+): Promise<void> {
+    const client = connection.client;
+    if (client === undefined) {
+        return;
+    }
+    try {
+        const result = await client.complete({
+            ref: { type: 'ref/prompt', name: promptName },
+            argument: { name: argument, value },
+        });
+        into.replaceChildren(
+            ...result.completion.values.map((suggestion) => {
+                const option = document.createElement('option');
+                option.value = suggestion;
+                return option;
+            }),
+        );
+    } catch {
+        // An argument with no completer answers an empty list rather than an error, and a server
+        // without completions at all should not produce a message per keystroke either.
+        into.replaceChildren();
+    }
+}
+
+promptForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (selectedPrompt === undefined) {
+        return;
+    }
+
+    const values: Record<string, string> = {};
+    for (const argument of selectedPrompt.args) {
+        const control = promptForm.elements.namedItem(argument.name);
+        values[argument.name] = control instanceof HTMLInputElement ? control.value : '';
+    }
+
+    const built = buildPromptArguments(selectedPrompt.args, values);
+    if (!built.ok) {
+        showPromptFailure(`Required and empty: ${built.missing.join(', ')}. Nothing was sent.`);
+        return;
+    }
+
+    void getPrompt(selectedPrompt.name, built.args);
+});
+
+async function getPrompt(name: string, args: Record<string, string>): Promise<void> {
+    const client = connection.client;
+    if (client === undefined) {
+        showPromptFailure('Not connected.');
+        return;
+    }
+
+    promptButton.disabled = true;
+    showPromptFailure(`getting ${name}…`);
+    try {
+        const result = await client.getPrompt({ name, arguments: args });
+        renderBlocks(toRenderedBlocks(result.messages as { role?: string; content?: unknown }[]));
+    } catch (error) {
+        // A prompt whose argument named nothing fails as an argument error, not as a broken
+        // connection: the server answered, and the fix is in the form.
+        showPromptFailure(describe(error));
+    } finally {
+        promptButton.disabled = false;
+    }
+}
+
+function renderBlocks(blocks: RenderedBlock[]): void {
+    promptMessages.replaceChildren();
+    for (const block of blocks) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'block';
+        wrapper.dataset['kind'] = block.kind;
+
+        const who = document.createElement('div');
+        who.className = 'who';
+        who.textContent = block.role;
+        if (block.uri !== undefined) {
+            const uri = document.createElement('span');
+            uri.className = 'uri';
+            uri.textContent = block.uri;
+            who.append(uri);
+        }
+
+        // textContent, never innerHTML: this is server-supplied text that embeds task data
+        // written by whoever uses the api.
+        const body = document.createElement('pre');
+        body.className = 'result body';
+        body.textContent = block.body;
+
+        wrapper.append(who, body);
+        promptMessages.append(wrapper);
+    }
+    promptMessages.hidden = false;
+}
+
+function showPromptFailure(text: string): void {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'block';
+    wrapper.dataset['kind'] = 'unknown';
+    const body = document.createElement('pre');
+    body.className = 'result body';
+    body.dataset['error'] = 'true';
+    body.textContent = text;
+    wrapper.append(body);
+    promptMessages.replaceChildren(wrapper);
+    promptMessages.hidden = false;
+}
+
 function renderLog(): void {
     logList.replaceChildren();
     const entries = log.entries();
@@ -298,6 +759,8 @@ function renderLog(): void {
 el('clear-log').addEventListener('click', () => log.clear());
 
 clearSelection();
+renderResources();
+renderPrompts();
 renderLog();
 setStatus('connecting', 'negotiating…');
 connection.connect().catch(() => {
