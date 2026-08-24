@@ -2,8 +2,14 @@
 
 How correctness is established in this repo — the answer to "am I done?".
 
-**Verified 2026-08-23** by running every command below against the implemented service. Where a
-category genuinely does not exist here, it says so rather than inventing a command.
+**Verified 2026-08-24.** The test and Docker gates were re-run end to end that day: `make test`
+(113 tests, 0 failures), `make up` to a fully healthy stack, `make ps`, `make nginx-reload`, the
+`--scale api=2` interlock, every endpoint in the table below, and a `tools/list` + `tasks_list` from
+a real MCP client through nginx. `make build` was additionally proven **from a clean checkout** — a
+fresh clone of the published repository with nothing carried over. The interactive and follow-mode
+targets (`make shell`, `make logs*`, `make db-reset`, `make run-mcp-inspector`, `make test-one`) are
+unchanged since the 2026-08-23 pass and were not re-run. Where a category genuinely does not exist
+here, this file says so rather than inventing a command.
 
 ## Gate commands
 
@@ -23,7 +29,7 @@ newer** (`engines` in both `package.json` files); the container is pinned to Nod
 | Gate | Make target | Underneath | Proves |
 |---|---|---|---|
 | Help | `make` | — | Lists every target. Builds nothing |
-| Build | `make build` | `build-api` + `build-mcp` | Both services compiled and tested |
+| Build | `make build` | `build-api` + `build-mcp` + `build-client` | All three modules compiled and tested |
 | Build (api) | `make build-api` | `./gradlew build` | Compiles, runs annotation processors, runs the 23 api tests, assembles |
 | Build (mcp) | `make build-mcp` | `npm ci && npm run build && npm test` | Typechecks, compiles to `mcp-server/dist`, runs the 40 mcp tests |
 | Build (client) | `make build-client` | `npm ci && tsc && esbuild && npm test` | Typechecks, bundles to `mcp-client/dist`, runs the 50 client tests |
@@ -37,13 +43,13 @@ newer** (`engines` in both `package.json` files); the container is pinned to Nod
 | Run MCP (host) | `make run-mcp` | `npm --prefix mcp-server run dev` | Compiles, then MCP server on `:8877`; needs `make run` in another shell |
 | Inspector | `make run-mcp-inspector` | `npx -y @modelcontextprotocol/inspector@2.3.0` | Opens the MCP Inspector web UI. **Not a gate** — it runs the tool, not the server, and needs the server already up |
 | Client | `make run-client` | opens `:8080/mcp/client` | Our own browser MCP client. **Not a gate.** Needs `make up`; unlike the Inspector it needs no protocol setting |
-| Clean | `make clean` | `./gradlew clean && rm -rf mcp-server/dist` | Discards build output. Leaves the database and `node_modules` alone |
+| Clean | `make clean` | `./gradlew clean && rm -rf mcp-server/dist mcp-client/dist` | Discards build output. Leaves the database and `node_modules` alone |
 | Image | `make docker-build` | two `docker build` calls | Builds `tasks` (Java 25) and `tasks-mcp` (Node 24) |
 | Run (Docker) | `make up` | `build-client`, then `docker compose up --build -d --scale mcp=3` | nginx on `:8080` and `:8877`; api + 3 MCP replicas, all healthy, client page mounted |
-| Scale | `make scale REPLICAS=n` | `docker compose up -d --scale mcp=n` | Changes the MCP replica count. The api cannot be scaled |
+| Scale | `make scale REPLICAS=n` | `docker compose up -d --no-recreate --scale mcp=n` | Changes the MCP replica count without restarting what is already up. The api cannot be scaled — `--scale api=2` exits 1 |
 | Logs (mcp) | `make logs-mcp` | `docker compose logs -f mcp` | All MCP replicas |
-| Stop | `make down` | `docker compose down` | Stops both. `./data` survives |
-| Status | `make ps` | `docker compose ps` | Container state **and health**, both services |
+| Stop | `make down` | `docker compose down` | Stops all three services. `./data` survives |
+| Status | `make ps` | `docker compose ps` | Container state **and health** for all three services — api, the mcp replicas, and nginx |
 | Logs (all) | `make logs` | `docker compose logs -f` | Both services, interleaved by time |
 | Logs (api) | `make logs-api` | `docker compose logs -f api` | Application only |
 | Logs (nginx) | `make logs-nginx` | `docker compose logs -f nginx` | Access log with upstream timing |
