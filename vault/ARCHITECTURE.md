@@ -236,11 +236,19 @@ that `apt-get` line the container starts and simply never reports healthy. A TCP
 rejected: a JVM with an open socket and a broken datasource would pass it, which is the exact case
 `/health` exists to catch.
 
-**There is no self-contained jar.** Neither `tasks-<version>.jar` nor `tasks-<version>-runner.jar`
-runs on its own — the runner jar's manifest Class-Path points at sibling `resources/` and `libs/`
-directories that exist only under `build/docker/main/layers/`. `java -jar` on either fails with
-`NoClassDefFoundError`. Use `make run`, or `./gradlew installDist` for a standalone launcher. The
-container copies the layered layout for the same reason.
+**There is no self-contained jar.** Neither `task-api-<version>.jar` nor
+`task-api-<version>-runner.jar` runs on its own, and they fail for different reasons. The plain jar
+has no `Main-Class` at all, so `java -jar` answers *"no main manifest attribute"*. The runner jar
+has one, but its manifest `Class-Path` names sibling `resources/`, `classes/` and `libs/`
+directories that exist only under `task-api/build/docker/main/layers/` — run it from
+`task-api/build/libs/` and it dies with `NoClassDefFoundError: io/micronaut/runtime/Micronaut`. Use
+`make run`, or `./gradlew installDist` for a standalone launcher. The container copies the layered
+layout for the same reason.
+
+Both jars carried the `tasks-` prefix until the sources moved under `task-api/` in `1cc88ca`, and
+this paragraph said so until 2026-08-24. Re-verified that day on **Java 25** — on an older JVM the
+runner jar fails earlier still, with `UnsupportedClassVersionError`, which is a property of the
+machine rather than of the packaging.
 
 **Base images are pinned by digest** in the `Dockerfile`, not by tag. A floating tag means the same
 Dockerfile produces a different image next month. The cost is that security patches need a
