@@ -1,8 +1,11 @@
 # Publishing to GitHub
 
-**Status:** draft
+**Status:** shipped
 **Owner:** Petar Nenov
 **Updated:** 2026-08-24
+
+> **Shipped 2026-08-24** to <https://github.com/petarnenov/mcp-tasks>. All 10 obligations
+> verified — see [Verification results](#verification-results).
 
 ## Problem
 
@@ -46,8 +49,9 @@ decision and does not have to match.
 | `mcp-tutorial` | Matches the local directory exactly; zero cognitive mapping | Generic, thousands of repositories share it, and it describes the project's origin rather than what it now contains |
 | `task-api-mcp` | Names both halves — the Java API and the MCP surface | Reads like a component, not a project; longer with no gain |
 
-Recommendation: **`mcp-tasks`**. Uniqueness only has to hold within the `petarnenov` account, so a
-name being common elsewhere costs nothing. A GitHub repository can be renamed later and GitHub
+Recommendation: **`mcp-tasks`** — **confirmed by the owner on 2026-08-24** and now live.
+Uniqueness only has to hold within the `petarnenov` account, so a name being common elsewhere costs
+nothing. A GitHub repository can be renamed later and GitHub
 keeps a redirect from the old URL, so this is reversible — unlike the push itself.
 
 **A contradiction to resolve first.** `vault/ARCHITECTURE.md` currently states, under *On the name*,
@@ -107,11 +111,15 @@ remote already exists.
 ## Correctness obligations
 
 1. `petarnenov/<name>` exists, visibility is **public**, and its default branch is `main`.
-2. `git ls-remote origin` lists exactly one ref, `refs/heads/main`, at the same SHA as local `main`
-   (`582eb49` at the time of writing).
-3. All **9** commits are present with their SHAs unchanged — nothing rewritten, squashed or amended.
-4. The published tree contains exactly the 83 tracked files and nothing else, verified against a
-   fresh clone rather than the local working tree.
+2. `git ls-remote origin` lists exactly one ref, `refs/heads/main`, at the same SHA as local `main`.
+3. Every commit is present with its SHA unchanged — nothing rewritten, squashed or amended.
+4. The published tree contains exactly the tracked files and nothing else, verified against a fresh
+   clone rather than the local working tree.
+
+   *These three said "`582eb49`", "9 commits" and "83 files" when this spec was written. Commit
+   `b41c9e1` — the vault accuracy pass that this spec's own Open question 4 triggered — landed
+   before the push, so the verified figures are 10 and 84. The drift is the spec being older than
+   the tree, not a discrepancy.*
 5. No path matching `data/`, `*.db`, `node_modules/`, `dist/`, `build/`, `.gradle/`, `.claude/` or
    `.DS_Store` appears anywhere in the published history — not just in the tip commit.
 6. No secret material appears in any published commit.
@@ -143,10 +151,31 @@ Obligation 9 is the one that actually proves "everything so far" was pushed. The
 pass on a repository that is missing a file the build needs, because the local working tree still
 has it.
 
+## Verification results
+
+Run 2026-08-24 against the live repository, immediately after the push.
+
+| # | Obligation | Result |
+|---|---|---|
+| 1 | Public, under `petarnenov`, default branch `main` | pass — `visibility=PUBLIC`, `private=false`, `default=main` |
+| 2 | One remote ref, SHA equal to local `main` | pass — `refs/heads/main` at `b41c9e1`, matching local |
+| 3 | Every commit present, SHAs unchanged | pass — **10** commits, tip `b41c9e1` |
+| 4 | Published tree is exactly the tracked files | pass — **84** files on `origin/main` and in a fresh clone |
+| 5 | No `data/`, `*.db`, `node_modules/`, `dist/`, `build/`, `.gradle/`, `.claude/`, `.DS_Store` anywhere in history | pass — no match across every commit, not just the tip |
+| 6 | No secret material in any commit | pass — no match, and the pre-flight audit was clean |
+| 7 | Single author, and the email is public by choice | pass — `Petar Nenov <petarnenovpetrov@gmail.com>` only |
+| 8 | Local `main` tracks `origin/main`, tree clean | pass — `## main...origin/main`, nothing pending |
+| 9 | A fresh clone builds and passes every test | pass — `make build` exit 0; **113** tests (23 api + 40 mcp + 50 client), 0 failures, nothing copied from the working directory |
+| 10 | Local directory and database untouched | pass — still `mcp-tutorial`, `data/tasks.db` unchanged at 24,576 bytes |
+
+Obligation 9 is the one that mattered. The other nine can pass on a repository missing a file the
+build needs, because the local tree still has it. Both `package-lock.json` files being tracked is
+what let `npm ci` work in the clone.
+
 ## Open questions
 
-1. **The name — blocking.** `mcp-tasks` is a recommendation, not a decision. Nothing runs until it
-   is confirmed, because it becomes a public URL.
+1. ~~**The name — blocking.**~~ **Resolved 2026-08-24:** the owner confirmed `mcp-tasks`, and the
+   repository is live at <https://github.com/petarnenov/mcp-tasks>.
 2. **No README.** A public repository with no README renders as a bare file tree. Out of scope here
    by the letter of the task ("push what is done so far", and a README is not done), but it is the
    first thing worth adding afterwards. The vault already contains the material.

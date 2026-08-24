@@ -28,8 +28,9 @@ who owns the machine.
 protocol revision 2026-07-28 with five tools, two resources and two prompts, and `mcp-client/` is a
 browser client for it. The *tutorial* half undersells what is here: a production-shaped CRUD API on
 Micronaut 5, an nginx front door and a three-replica Compose stack are not tutorial material. Read
-the Map below for scope rather than the directory name. The **GitHub** repository name is a separate
-decision — see [[github-publish]].
+the Map below for scope rather than the directory name. On **GitHub** it is published as
+[`petarnenov/mcp-tasks`](https://github.com/petarnenov/mcp-tasks) — a separate name from the local
+directory, deliberately; see [[github-publish]].
 
 *(Until 2026-08-24 this paragraph claimed the project had "nothing to do with the Model Context
 Protocol". That was stale text from before `mcp-server/` landed and is contradicted by the rest of

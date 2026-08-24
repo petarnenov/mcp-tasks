@@ -9,7 +9,7 @@ before implementing it; update it when scope changes.
 
 | Spec | Status | Summary |
 |---|---|---|
-| [github-publish](github-publish.md) | draft | Publish the repo as a public GitHub repository under `petarnenov`: name choice, an audit of what becomes public, `gh repo create`, and a push of all 9 commits. Name unconfirmed. |
+| [github-publish](github-publish.md) | shipped | Published as **[petarnenov/mcp-tasks](https://github.com/petarnenov/mcp-tasks)**: name choice, an audit of what becomes public, `gh repo create`, and the push. Verified 2026-08-24, 10 obligations, including a fresh clone that builds. |
 | [mcp-prompts](mcp-prompts.md) | shipped | The third primitive: `triage_tasks` and `plan_task`, each embedding the resource it talks about, plus a prompts panel in the browser client. Verified 2026-08-24, 21 obligations. |
 | [mcp-resources](mcp-resources.md) | shipped | Two MCP resources — `tasks://tasks` and the `tasks://tasks/{id}` template with id completion — plus a resources panel in the browser client. Verified 2026-08-24, 20 obligations. |
 | [mcp-client](mcp-client.md) | shipped | A browser MCP client served at `:8080/mcp/client`, negotiating 2026-07-28 with a loud downgrade. Tool list, generated forms, message log. No LLM. Verified 2026-08-23, 16 obligations. |
