@@ -1,6 +1,6 @@
 # Architecture
 
-Written from the code as it stands on **2026-08-23**. Every path and line reference below was
+Written from the code as it stands on **2026-08-24**. Every path and line reference below was
 checked against the working tree.
 
 ## What this system is
@@ -24,8 +24,16 @@ one SQLite file next to the code, and is intended to be started, used, and stopp
 who owns the machine.
 
 **On the name:** the directory is called `mcp-tutorial` and stays that way by the owner's decision
-(2026-08-23). It is a historical name, not a description — this project has nothing to do with the
-Model Context Protocol. Do not infer scope from it.
+(2026-08-23). The Model Context Protocol half of that name is accurate — `mcp-server/` serves
+protocol revision 2026-07-28 with five tools, two resources and two prompts, and `mcp-client/` is a
+browser client for it. The *tutorial* half undersells what is here: a production-shaped CRUD API on
+Micronaut 5, an nginx front door and a three-replica Compose stack are not tutorial material. Read
+the Map below for scope rather than the directory name. The **GitHub** repository name is a separate
+decision — see [[github-publish]].
+
+*(Until 2026-08-24 this paragraph claimed the project had "nothing to do with the Model Context
+Protocol". That was stale text from before `mcp-server/` landed and is contradicted by the rest of
+this document and by four shipped specs.)*
 
 ## Map
 
@@ -53,7 +61,7 @@ Model Context Protocol. Do not infer scope from it.
 | Task API client | `mcp-server/src/tasks-client.ts` | `fetch` over the api, plus the duplicated wire types. Returns a result union, never throws |
 | MCP container | `mcp-server/Dockerfile` | `node:24-alpine`, digest-pinned, multi-stage, non-root |
 | Client page | `mcp-client/src/main.ts` | DOM wiring. The only file in that module allowed to touch `document` |
-| Client logic | `mcp-client/src/{connection,schema-form,resources,prompts,log}.ts` | Negotiation and era reporting, JSON Schema to form model, the resource and prompt models with their error handling, the message log. No DOM, so all five are unit-tested |
+| Client logic | `mcp-client/src/{connection,schema-form,resources,prompts,log}.ts` | Negotiation and era reporting, JSON Schema to form model, the resource and prompt models with their error handling, the message log. No DOM, so all five are unit-testable — but only four have suites; `connection.ts` has no test file |
 | Entry point | `Makefile` | The documented way to run anything here. `make` lists the targets |
 
 Roughly 940 lines of Java (`task-api`) and 4,080 lines of TypeScript (`mcp-server` plus
@@ -70,7 +78,7 @@ Roughly 940 lines of Java (`task-api`) and 4,080 lines of TypeScript (`mcp-serve
    asks `Timestamps` for one string used as both `createdAt` and `updatedAt`, and substitutes
    `TaskStatus.DEFAULT` / `TaskPriority.DEFAULT` for anything the client omitted.
 3. `repository.save(task)` runs the `INSERT` that Micronaut Data generated at compile time from
-   `TaskRepository` (`src/main/java/dev/petrov/tasks/TaskRepository.java:16`).
+   `TaskRepository` (`src/main/java/dev/petrov/tasks/TaskRepository.java:15`).
 4. The controller returns `201` with `Location: /tasks/{id}`.
 
 `GET`, `PUT` and `DELETE` follow the same three layers. `TaskService.get` and `.update` throw
@@ -170,7 +178,7 @@ Environment variables, none of them required — all have working defaults in `a
 
 The non-obvious choices, and why. These are the ones that look wrong without context.
 
-**Micronaut 5.1.1 on Java 25.** Migrated from Micronaut 5.1.1 / Java 25 on 2026-08-23; see
+**Micronaut 5.1.1 on Java 25.** Migrated from Micronaut 4.10.17 / Java 21 on 2026-08-23; see
 [[micronaut-5-migration]]. **Java 25 is not an independent preference** — Micronaut 5 has a JDK 25
 baseline, so the language level is forced by the framework. The two move together in both
 directions.

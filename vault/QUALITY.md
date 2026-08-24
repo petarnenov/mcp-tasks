@@ -198,9 +198,10 @@ The most useful part of this file. Current, honest state:
 4. **The 400 responses for validation are Micronaut's defaults, not ours.** Tests assert the status
    code and that no stack trace leaks, but the body shape is whatever the framework produces and
    could change under a framework upgrade. Only the 404 body is ours (`ApiError`).
-5. **No coverage measurement.** The 36 tests map to stated obligations in [[task-api]],
-   [[docker-and-make]] and [[mcp-server-typescript]]; that is deliberate coverage of the *specs*,
-   not measured coverage of the *code*. Untested branches may exist.
+5. **No coverage measurement.** The 113 tests map to stated obligations in [[task-api]],
+   [[docker-and-make]], [[mcp-server-typescript]], [[mcp-resources]], [[mcp-prompts]] and
+   [[mcp-client]]; that is deliberate coverage of the *specs*, not measured coverage of the *code*.
+   Untested branches may exist.
 6. **No CI.** Every gate depends on a human running it locally.
 7. **Flyway's SQLite support is inside `flyway-core`** rather than a dedicated module, and it is
    community-tier. It works here, verified by `PersistenceTest`, but it is not the path Redgate
@@ -241,8 +242,11 @@ The most useful part of this file. Current, honest state:
     module — has **no automated coverage at all**. Obligations 1-4 and 10-16 of [[mcp-client]] were
     driven by hand through a real browser on 2026-08-23 and will not be re-run by anything. The
     logic worth testing was deliberately kept out of `main.ts` for this reason, but "deliberately
-    thin" is not "verified". Adding Playwright was considered and declined; it is the decision to
-    revisit first if the page grows.
+    thin" is not "verified" — and the extraction is not complete: `connection.ts` (197 lines, no
+    DOM) is the one file in `mcp-client/src/` with neither a test file nor a suite importing it, so
+    negotiation and the downgrade path have no checked-in coverage despite being unit-testable
+    today, without a browser runner. Adding Playwright was considered and declined; it is the
+    decision to revisit first if the page grows.
 18. **`mcp-client/dist` is a bind mount, so a stale bundle is invisible.** `make up` depends on
     `build-client`, which closes the common case, but editing `src/` and refreshing the browser
     without rebuilding shows the old page with no warning anywhere.
